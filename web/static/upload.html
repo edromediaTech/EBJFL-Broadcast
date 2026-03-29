@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EBJFL - Envoyer un fichier</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #1e1e2e; color: #cdd6f4;
+            min-height: 100vh; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .logo { width: 80px; height: 80px; border-radius: 50%; margin-bottom: 16px; }
+        h1 { font-size: 22px; color: #89b4fa; margin-bottom: 8px; text-align: center; }
+        p { font-size: 14px; color: #a6adc8; margin-bottom: 24px; text-align: center; }
+
+        .upload-zone {
+            width: 100%; max-width: 400px; border: 3px dashed #45475a;
+            border-radius: 16px; padding: 40px 20px; text-align: center;
+            cursor: pointer; transition: all 0.3s;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #89b4fa; background: rgba(137, 180, 250, 0.1);
+        }
+        .upload-zone .icon { font-size: 48px; margin-bottom: 12px; }
+        .upload-zone .label { font-size: 16px; color: #cdd6f4; }
+        .upload-zone .hint { font-size: 12px; color: #6c7086; margin-top: 8px; }
+
+        input[type="file"] { display: none; }
+
+        .progress {
+            width: 100%; max-width: 400px; margin-top: 20px; display: none;
+        }
+        .progress-bar {
+            height: 8px; background: #313244; border-radius: 4px; overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%; background: #89b4fa; border-radius: 4px;
+            transition: width 0.3s; width: 0%;
+        }
+        .progress-text {
+            font-size: 13px; color: #a6adc8; margin-top: 8px; text-align: center;
+        }
+
+        .result {
+            width: 100%; max-width: 400px; margin-top: 20px;
+            padding: 16px; border-radius: 12px; text-align: center;
+            font-size: 15px; font-weight: 600; display: none;
+        }
+        .result.success { background: rgba(166, 227, 161, 0.15); color: #a6e3a1; border: 1px solid #a6e3a1; }
+        .result.error { background: rgba(243, 139, 168, 0.15); color: #f38ba8; border: 1px solid #f38ba8; }
+
+        .files-list {
+            width: 100%; max-width: 400px; margin-top: 16px;
+            list-style: none;
+        }
+        .files-list li {
+            padding: 10px 14px; background: #313244; border-radius: 8px;
+            margin-bottom: 6px; font-size: 14px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .files-list .status { font-size: 12px; }
+        .files-list .status.ok { color: #a6e3a1; }
+        .files-list .status.converting { color: #fab387; }
+    </style>
+</head>
+<body>
+    <img src="/assets/logo.png" class="logo" alt="EBJFL">
+    <h1>Envoyer un fichier</h1>
+    <p>Église Baptiste Jérusalem de Fort-Liberté<br>Sélectionnez ou déposez votre fichier ci-dessous</p>
+
+    <div class="upload-zone" id="dropzone" onclick="fileInput.click()">
+        <div class="icon">📁</div>
+        <div class="label">Touchez pour choisir un fichier</div>
+        <div class="hint">PowerPoint, PDF, Images, Vidéos (max 200 MB)</div>
+    </div>
+    <input type="file" id="fileInput" accept=".pptx,.ppt,.pdf,.txt,.jpg,.jpeg,.png,.gif,.mp4,.webm,.avi,.mov">
+
+    <div class="progress" id="progress">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-text" id="progressText">Envoi en cours...</div>
+    </div>
+
+    <div class="result" id="result"></div>
+
+    <ul class="files-list" id="filesList"></ul>
+
+    <script>
+        const API = `http://${location.hostname}:${location.port || 8000}`;
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+
+        // Drag & drop
+        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length) uploadFile(fileInput.files[0]);
+        });
+
+        async function uploadFile(file) {
+            const progress = document.getElementById('progress');
+            const fill = document.getElementById('progressFill');
+            const text = document.getElementById('progressText');
+            const result = document.getElementById('result');
+
+            progress.style.display = 'block';
+            result.style.display = 'none';
+            fill.style.width = '0%';
+            text.textContent = `Envoi de ${file.name}...`;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `${API}/upload-media`);
+
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round(e.loaded / e.total * 100);
+                        fill.style.width = pct + '%';
+                        text.textContent = `Envoi: ${pct}% (${(e.loaded/1024/1024).toFixed(1)} MB)`;
+                    }
+                };
+
+                xhr.onload = () => {
+                    const res = JSON.parse(xhr.responseText);
+                    if (res.ok) {
+                        result.className = 'result success';
+                        result.textContent = `${file.name} envoyé avec succès !`;
+                        if (res.file?.status === 'converting') {
+                            result.textContent += ' (conversion en cours...)';
+                        }
+                    } else {
+                        result.className = 'result error';
+                        result.textContent = `Erreur: ${res.error || 'Envoi échoué'}`;
+                    }
+                    result.style.display = 'block';
+                    progress.style.display = 'none';
+                    loadFiles();
+                };
+
+                xhr.onerror = () => {
+                    result.className = 'result error';
+                    result.textContent = 'Erreur de connexion au serveur';
+                    result.style.display = 'block';
+                    progress.style.display = 'none';
+                };
+
+                xhr.send(formData);
+            } catch (e) {
+                result.className = 'result error';
+                result.textContent = `Erreur: ${e.message}`;
+                result.style.display = 'block';
+                progress.style.display = 'none';
+            }
+        }
+
+        async function loadFiles() {
+            try {
+                const res = await fetch(`${API}/media/files`);
+                const files = await res.json();
+                const list = document.getElementById('filesList');
+                list.innerHTML = '';
+                files.slice(0, 10).forEach(f => {
+                    const li = document.createElement('li');
+                    const icons = {image:'🖼️', video:'🎬', presentation:'📊', document:'📄'};
+                    li.innerHTML = `${icons[f.file_type]||'📎'} ${f.original_name}
+                        <span class="status ${f.status === 'ready' ? 'ok' : 'converting'}">${f.status}</span>`;
+                    list.appendChild(li);
+                });
+            } catch(e) {}
+        }
+
+        loadFiles();
+    </script>
+</body>
+</html>

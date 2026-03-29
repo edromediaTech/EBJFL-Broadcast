@@ -123,6 +123,7 @@
     <div class="tab" data-tab="lt">Lower Thirds</div>
     <div class="tab" data-tab="text">Texte</div>
     <div class="tab" data-tab="alert">Alertes</div>
+    <div class="tab" data-tab="medias">Médias</div>
     <div class="tab" data-tab="tools">Outils</div>
 </div>
 
@@ -265,6 +266,40 @@
     </div>
 </div>
 
+<!-- ══ MÉDIAS ══ -->
+<div class="panel" id="panel-medias">
+    <div class="card">
+        <h3>Envoyer un fichier</h3>
+        <input type="file" id="media-file" accept=".pptx,.ppt,.pdf,.txt,.jpg,.jpeg,.png,.gif,.mp4,.webm"
+               style="margin-bottom:8px;" onchange="uploadMedia()">
+        <div id="upload-progress" style="display:none;">
+            <div style="height:6px;background:#313244;border-radius:3px;overflow:hidden;margin:8px 0;">
+                <div id="upload-fill" style="height:100%;background:#89b4fa;width:0%;transition:width 0.3s;"></div>
+            </div>
+            <div id="upload-text" style="font-size:12px;color:#a6adc8;text-align:center;"></div>
+        </div>
+    </div>
+
+    <div class="section-title">Fichiers sur le serveur</div>
+    <div class="btn-row" style="margin-bottom:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="loadMediaFiles('')">Tous</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadMediaFiles('image')">Images</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadMediaFiles('presentation')">PPTX</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadMediaFiles('video')">Vidéos</button>
+    </div>
+    <ul class="item-list" id="media-list"></ul>
+
+    <div id="slide-controls" style="display:none; margin-top:12px;">
+        <div class="section-title" id="slide-title">Diaporama</div>
+        <div class="btn-row">
+            <button class="btn btn-primary" onclick="api('/media/slides/prev')">◂ Préc</button>
+            <button class="btn btn-success" id="slide-indicator">1 / 1</button>
+            <button class="btn btn-primary" onclick="api('/media/slides/next')">Suiv ▸</button>
+        </div>
+        <button class="btn btn-danger" onclick="api('/media/slides/stop'); document.getElementById('slide-controls').style.display='none'">Arrêter projection</button>
+    </div>
+</div>
+
 <!-- ══ OUTILS ══ -->
 <div class="panel" id="panel-tools">
     <div class="card">
@@ -355,6 +390,17 @@
                     el.textContent = info;
                 } else {
                     el.textContent = 'Écran noir';
+                }
+            }
+            if (msg.type === 'slideshow') {
+                const ctrl = document.getElementById('slide-controls');
+                const ind = document.getElementById('slide-indicator');
+                if (msg.active) {
+                    ctrl.style.display = 'block';
+                    document.getElementById('slide-title').textContent = msg.title || 'Diaporama';
+                    ind.textContent = `${(msg.current_slide||0)+1} / ${msg.total_slides||'?'}`;
+                } else {
+                    ctrl.style.display = 'none';
                 }
             }
         };
@@ -528,11 +574,71 @@
         });
     }
 
+    // ── Media Upload ──
+    function uploadMedia() {
+        const input = document.getElementById('media-file');
+        if (!input.files.length) return;
+        const file = input.files[0];
+
+        const progress = document.getElementById('upload-progress');
+        const fill = document.getElementById('upload-fill');
+        const text = document.getElementById('upload-text');
+        progress.style.display = 'block';
+        fill.style.width = '0%';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_BASE}/upload-media`);
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const pct = Math.round(e.loaded / e.total * 100);
+                fill.style.width = pct + '%';
+                text.textContent = `${pct}% (${(e.loaded/1024/1024).toFixed(1)} MB)`;
+            }
+        };
+        xhr.onload = () => {
+            progress.style.display = 'none';
+            input.value = '';
+            loadMediaFiles('');
+        };
+        xhr.onerror = () => { progress.style.display = 'none'; text.textContent = 'Erreur'; };
+        xhr.send(formData);
+    }
+
+    async function loadMediaFiles(type) {
+        const files = await apiGet(`/media/files${type ? '?type='+type : ''}`);
+        const list = document.getElementById('media-list');
+        list.innerHTML = '';
+        if (!Array.isArray(files)) return;
+        const icons = {image:'🖼️', video:'🎬', presentation:'📊', document:'📄'};
+        files.forEach(f => {
+            const li = document.createElement('li');
+            const statusColor = f.status === 'ready' ? '#a6e3a1' : '#fab387';
+            li.innerHTML = `<span class="num">${icons[f.file_type]||'📎'}</span>
+                <span class="title">${f.original_name}</span>
+                <span style="font-size:11px;color:${statusColor}">${f.status}</span>`;
+            li.onclick = () => projectMediaFile(f);
+            list.appendChild(li);
+        });
+    }
+
+    async function projectMediaFile(f) {
+        await api(`/media/files/${f.id}/project`);
+        if (f.total_slides > 1 || f.file_type === 'presentation') {
+            document.getElementById('slide-controls').style.display = 'block';
+            document.getElementById('slide-title').textContent = f.original_name;
+            document.getElementById('slide-indicator').textContent = `1 / ${f.total_slides || '?'}`;
+        }
+    }
+
     // ── Init ──
     connectWS();
     loadSongbooks();
     loadSongs();
     loadLTs();
+    loadMediaFiles('');
 </script>
 </body>
 </html>

@@ -289,6 +289,22 @@
                 case "alert": applyAlert(msg); break;
                 case "clock": applyClock(msg); break;
                 case "media": applyMedia(msg); break;
+                case "slideshow": applySlideshow(msg); break;
+            }
+        }
+
+        // ── Slideshow ──
+        function applySlideshow(state) {
+            const el = document.getElementById("media-layer");
+            if (!state.active) { el.classList.remove("visible"); el.innerHTML = ""; return; }
+
+            if (state.slide_url) {
+                if (state.slide_url.match(/\.(mp4|webm|avi|mov)$/i)) {
+                    el.innerHTML = `<video src="${state.slide_url}" autoplay style="width:100%;height:100%;object-fit:contain;"></video>`;
+                } else {
+                    el.innerHTML = `<img src="${state.slide_url}" alt="" style="width:100%;height:100%;object-fit:contain;transition:opacity 0.4s;">`;
+                }
+                el.classList.add("visible");
             }
         }
 

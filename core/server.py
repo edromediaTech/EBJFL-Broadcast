@@ -9,18 +9,20 @@ from contextlib import asynccontextmanager
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Body
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Body, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from core.obs_bridge import obs_bridge
+from core.config import config
 from core.db.models import init_db
 from core.db import crud
 from core.engines.projection import projection
 from core.engines.subtitles import subtitles
 from core.engines.virtual_screen import screen_manager
 from core.engines.media import media_engine
+from core.engines.media_hub import media_hub
 
 
 # ── WebSocket Manager ──
@@ -65,6 +67,7 @@ async def lifespan(app: FastAPI):
     subtitles.add_listener(_broadcast_cb)
     screen_manager.add_listener(_broadcast_cb)
     media_engine.add_listener(_broadcast_cb)
+    media_hub.add_listener(_broadcast_cb)
     yield
     obs_bridge.disconnect()
 
@@ -73,6 +76,7 @@ app = FastAPI(title="EBJFL-Broadcast", version="0.2.0", lifespan=lifespan)
 app.mount("/overlays", StaticFiles(directory="overlays"), name="overlays")
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+os.makedirs("assets/uploads", exist_ok=True)
 
 
 # ══════════════════════════════════════
@@ -596,6 +600,99 @@ def list_songbooks():
 
 
 # ══════════════════════════════════════
+#  MEDIA HUB (Upload & Projection)
+# ══════════════════════════════════════
+
+@app.post("/upload-media")
+async def upload_media(file: UploadFile = File(...)):
+    content = await file.read()
+    try:
+        mf = await media_hub.save_upload(file.filename, content)
+        return {"ok": True, "file": {"id": mf.id, "filename": mf.original_name,
+                "type": mf.file_type, "status": mf.status, "size": mf.size}}
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
+
+
+@app.get("/media/files")
+def list_media_files(type: str = ""):
+    return media_hub.list_files(type)
+
+
+@app.get("/media/files/{file_id}")
+def get_media_file(file_id: str):
+    mf = media_hub.get_file(file_id)
+    if not mf:
+        return {"error": "Fichier introuvable"}
+    from dataclasses import asdict
+    return asdict(mf)
+
+
+@app.delete("/media/files/{file_id}")
+def delete_media_file(file_id: str):
+    ok = media_hub.delete_file(file_id)
+    return {"ok": ok}
+
+
+@app.post("/media/files/{file_id}/project")
+async def project_media_file(file_id: str, slide: int = 0):
+    await media_hub.project_file(file_id, slide)
+    return {"ok": True}
+
+
+@app.post("/media/slides/next")
+async def media_slides_next():
+    await media_hub.slide_next()
+    return {"ok": True, "slide": media_hub.slideshow.current_slide}
+
+
+@app.post("/media/slides/prev")
+async def media_slides_prev():
+    await media_hub.slide_prev()
+    return {"ok": True, "slide": media_hub.slideshow.current_slide}
+
+
+@app.post("/media/slides/goto/{index}")
+async def media_slides_goto(index: int):
+    await media_hub.slide_goto(index)
+    return {"ok": True, "slide": media_hub.slideshow.current_slide}
+
+
+@app.get("/media/slides/state")
+def media_slides_state():
+    return media_hub.get_slideshow_state()
+
+
+@app.post("/media/slides/stop")
+async def media_slides_stop():
+    await media_hub.stop_slideshow()
+    return {"ok": True}
+
+
+# ══════════════════════════════════════
+#  QR CODE
+# ══════════════════════════════════════
+
+@app.get("/qrcode")
+def get_qr_code():
+    """Génère un QR Code PNG pour l'URL d'upload."""
+    import socket
+    import qrcode
+    import io
+    from fastapi.responses import StreamingResponse
+
+    ip = socket.gethostbyname(socket.gethostname())
+    url = f"http://{ip}:{config.server.port}/static/upload.html"
+
+    qr = qrcode.make(url)
+    buf = io.BytesIO()
+    qr.save(buf, format="PNG")
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png",
+                             headers={"X-Upload-URL": url})
+
+
+# ══════════════════════════════════════
 #  WEBSOCKET
 # ══════════════════════════════════════
 
@@ -608,6 +705,7 @@ async def ws_live(websocket: WebSocket):
             "projection": projection.get_state(),
             "subtitles": subtitles.get_state(),
             "media": media_engine.get_state(),
+            "slideshow": media_hub.get_slideshow_state(),
         }, ensure_ascii=False))
     except Exception:
         pass
