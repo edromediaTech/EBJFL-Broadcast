@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=5.0, user-scalable=yes">
+    <title>EBJFL - Contrôle à distance</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #1e1e2e; color: #cdd6f4;
+            min-height: 100vh; overflow-x: hidden;
+        }
+        header {
+            background: #181825; padding: 12px 16px;
+            border-bottom: 2px solid #89b4fa;
+            display: flex; align-items: center; gap: 10px;
+            position: sticky; top: 0; z-index: 50;
+        }
+        header img { width: 36px; height: 36px; border-radius: 50%; }
+        header h1 { font-size: 17px; color: #89b4fa; flex: 1; }
+        .status { font-size: 11px; color: #a6adc8; padding: 4px 8px; border-radius: 10px; background: #313244; }
+        .status.connected { background: #a6e3a1; color: #1e1e2e; }
+
+        /* Tabs */
+        .tabs {
+            display: flex; background: #181825;
+            border-bottom: 1px solid #45475a;
+            overflow-x: auto; -webkit-overflow-scrolling: touch;
+            position: sticky; top: 58px; z-index: 49;
+        }
+        .tab {
+            flex-shrink: 0; padding: 10px 14px; text-align: center; cursor: pointer;
+            color: #6c7086; font-weight: 600; font-size: 12px;
+            border-bottom: 3px solid transparent; white-space: nowrap;
+        }
+        .tab.active { color: #89b4fa; border-bottom-color: #89b4fa; }
+
+        .panel { display: none; padding: 12px; }
+        .panel.active { display: block; }
+
+        /* Buttons */
+        .btn {
+            display: block; padding: 12px 16px; border: none; border-radius: 8px;
+            font-size: 15px; font-weight: 700; cursor: pointer; width: 100%;
+            margin-bottom: 6px; text-align: center; transition: opacity 0.15s;
+        }
+        .btn:active { opacity: 0.7; }
+        .btn-primary { background: #89b4fa; color: #1e1e2e; }
+        .btn-success { background: #a6e3a1; color: #1e1e2e; }
+        .btn-danger { background: #f38ba8; color: #1e1e2e; }
+        .btn-warning { background: #fab387; color: #1e1e2e; }
+        .btn-secondary { background: #45475a; color: #cdd6f4; }
+        .btn-lg { padding: 18px; font-size: 18px; }
+        .btn-sm { padding: 8px 12px; font-size: 13px; }
+
+        .btn-row { display: flex; gap: 6px; margin-bottom: 6px; }
+        .btn-row .btn { flex: 1; }
+
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+
+        input, select, textarea {
+            width: 100%; padding: 10px; border: 1px solid #45475a;
+            border-radius: 8px; background: #313244; color: #cdd6f4;
+            font-size: 15px; margin-bottom: 6px;
+        }
+
+        .card {
+            background: #313244; border-radius: 8px; padding: 12px;
+            margin-bottom: 10px; border: 1px solid #45475a;
+        }
+        .card h3 { color: #89b4fa; margin-bottom: 6px; font-size: 14px; }
+
+        .item-list { list-style: none; max-height: 40vh; overflow-y: auto; }
+        .item-list li {
+            padding: 12px 14px; border-bottom: 1px solid #45475a;
+            cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px;
+        }
+        .item-list li:active { background: #45475a; }
+        .item-list li .num { color: #89b4fa; font-weight: bold; min-width: 40px; }
+        .item-list li .title { flex: 1; }
+
+        .section-title {
+            font-size: 13px; color: #89b4fa; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 1px;
+            margin: 12px 0 6px; padding-bottom: 4px;
+            border-bottom: 1px solid #45475a;
+        }
+
+        /* Song verse navigator */
+        .verse-nav { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+        .verse-btn {
+            padding: 8px 14px; border-radius: 6px; border: 1px solid #45475a;
+            background: #313244; color: #cdd6f4; cursor: pointer;
+            font-size: 13px; font-weight: 600;
+        }
+        .verse-btn.active { background: #89b4fa; color: #1e1e2e; border-color: #89b4fa; }
+        .verse-btn:active { opacity: 0.7; }
+
+        /* Preview */
+        .preview {
+            background: #181825; border: 1px solid #45475a; border-radius: 8px;
+            padding: 12px; margin: 8px 0; min-height: 60px;
+            font-size: 14px; color: #a6adc8; white-space: pre-line;
+        }
+
+        /* Color input */
+        input[type="color"] { height: 40px; padding: 2px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<header>
+    <img src="/assets/logo.png" alt="EBJFL">
+    <h1>EBJFL-Broadcast</h1>
+    <div class="status" id="status">Hors ligne</div>
+</header>
+
+<div class="tabs" id="tabs">
+    <div class="tab active" data-tab="live">Live</div>
+    <div class="tab" data-tab="songs">Chants</div>
+    <div class="tab" data-tab="bible">Bible</div>
+    <div class="tab" data-tab="lt">Lower Thirds</div>
+    <div class="tab" data-tab="text">Texte</div>
+    <div class="tab" data-tab="alert">Alertes</div>
+    <div class="tab" data-tab="tools">Outils</div>
+</div>
+
+<!-- ══ LIVE ══ -->
+<div class="panel active" id="panel-live">
+    <button class="btn btn-success btn-lg" onclick="api('/projection/song/next')">
+        SUIVANT ▸
+    </button>
+
+    <div class="card">
+        <h3>Projection en cours</h3>
+        <div id="current-projection" class="preview">Écran noir</div>
+    </div>
+
+    <div class="btn-row">
+        <button class="btn btn-primary" onclick="api('/projection/song/prev')">◂ Préc</button>
+        <button class="btn btn-primary" onclick="api('/projection/song/next')">Suiv ▸</button>
+    </div>
+
+    <div class="section-title">Sous-titres</div>
+    <div class="btn-row">
+        <button class="btn btn-warning" onclick="api('/subtitles/prev')">◂ Préc</button>
+        <button class="btn btn-warning" onclick="api('/subtitles/next')">Suiv ▸</button>
+        <button class="btn btn-secondary" onclick="api('/subtitles/hide')">Masquer</button>
+    </div>
+
+    <button class="btn btn-danger" onclick="api('/projection/blank')">ÉCRAN NOIR</button>
+</div>
+
+<!-- ══ CHANTS ══ -->
+<div class="panel" id="panel-songs">
+    <div class="btn-row">
+        <select id="song-songbook" onchange="loadSongs()">
+            <option value="">Tous les recueils</option>
+        </select>
+    </div>
+    <input type="text" id="song-search" placeholder="Rechercher un chant (titre ou numéro)..." oninput="debounceSongSearch()">
+    <ul class="item-list" id="song-list"></ul>
+
+    <!-- Song detail -->
+    <div id="song-detail" style="display:none;">
+        <div class="section-title" id="song-detail-title">Chant</div>
+        <div class="verse-nav" id="verse-nav"></div>
+        <div class="preview" id="verse-preview"></div>
+        <div class="btn-row">
+            <button class="btn btn-success" onclick="projectCurrentSong()">Projeter</button>
+            <button class="btn btn-warning" onclick="startSubtitles()">Sous-titres</button>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-primary" onclick="api('/projection/song/prev')">◂ Préc</button>
+            <button class="btn btn-primary" onclick="api('/projection/song/next')">Suiv ▸</button>
+            <button class="btn btn-danger btn-sm" onclick="api('/projection/blank')">Noir</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ BIBLE ══ -->
+<div class="panel" id="panel-bible">
+    <div class="card">
+        <h3>Recherche de verset</h3>
+        <input id="bible-search" placeholder="Rechercher un mot (ex: amour, paix, grâce...)">
+        <button class="btn btn-primary" onclick="searchBible()">Chercher</button>
+    </div>
+    <ul class="item-list" id="bible-results"></ul>
+
+    <div class="card">
+        <h3>Saisie directe</h3>
+        <textarea id="bible-text" rows="3" placeholder="Collez ou saisissez un verset..."></textarea>
+        <input id="bible-ref" placeholder="Référence (ex: Jean 3:16)">
+        <button class="btn btn-success" onclick="projectBible()">Projeter</button>
+    </div>
+</div>
+
+<!-- ══ LOWER THIRDS ══ -->
+<div class="panel" id="panel-lt">
+    <div class="card">
+        <h3>Afficher un Lower Third</h3>
+        <input id="lt-name" placeholder="Nom (Prénom NOM)">
+        <input id="lt-title" placeholder="Titre (Pasteur, Diacre...)">
+        <input id="lt-subtitle" placeholder="Sous-titre (Église, Org...)">
+        <div class="btn-row">
+            <button class="btn btn-success" onclick="showLT()">Afficher</button>
+            <button class="btn btn-danger" onclick="api('/obs/lower-third/hide')">Masquer</button>
+        </div>
+    </div>
+    <div class="section-title">Lower Thirds enregistrés</div>
+    <ul class="item-list" id="lt-list"></ul>
+</div>
+
+<!-- ══ TEXTE LIBRE ══ -->
+<div class="panel" id="panel-text">
+    <div class="card">
+        <h3>Projection de texte</h3>
+        <input id="txt-title" placeholder="Titre">
+        <textarea id="txt-content" rows="4" placeholder="Texte à projeter..."></textarea>
+        <select id="txt-anim">
+            <option value="fade">Fondu</option>
+            <option value="slide-up">Glisser vers le haut</option>
+            <option value="slide-left">Glisser de la gauche</option>
+            <option value="none">Aucune animation</option>
+        </select>
+        <div class="btn-row">
+            <button class="btn btn-success" onclick="projectText()">Projeter</button>
+            <button class="btn btn-danger" onclick="api('/projection/blank')">Noir</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ ALERTES ══ -->
+<div class="panel" id="panel-alert">
+    <div class="card">
+        <h3>Message d'alerte / Annonce</h3>
+        <textarea id="alert-text" rows="2" placeholder="Texte de l'annonce..."></textarea>
+        <div class="btn-row">
+            <select id="alert-style">
+                <option value="banner">Bandeau</option>
+                <option value="ticker">Défilant</option>
+                <option value="fullscreen">Plein écran</option>
+            </select>
+            <select id="alert-pos">
+                <option value="bottom">Bas</option>
+                <option value="top">Haut</option>
+                <option value="center">Centre</option>
+            </select>
+        </div>
+        <div class="btn-row">
+            <div>
+                <label style="font-size:12px;color:#a6adc8;">Fond</label>
+                <input type="color" id="alert-bg" value="#f38ba8">
+            </div>
+            <div>
+                <label style="font-size:12px;color:#a6adc8;">Texte</label>
+                <input type="color" id="alert-fg" value="#1e1e2e">
+            </div>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-warning" onclick="showAlert()">Afficher</button>
+            <button class="btn btn-secondary" onclick="api('/alert/hide')">Masquer</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ OUTILS ══ -->
+<div class="panel" id="panel-tools">
+    <div class="card">
+        <h3>Horloge</h3>
+        <div class="btn-row">
+            <button class="btn btn-primary" onclick="api('/clock/toggle', {show:true, format:'HH:mm'})">Afficher HH:mm</button>
+            <button class="btn btn-primary" onclick="api('/clock/toggle', {show:true, format:'HH:mm:ss'})">HH:mm:ss</button>
+            <button class="btn btn-secondary" onclick="api('/clock/toggle', {show:false})">Masquer</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Compte à rebours</h3>
+        <div class="btn-row">
+            <input id="countdown-val" placeholder="00:05:00" value="00:05:00" style="flex:2;">
+            <input id="countdown-label" placeholder="Label" style="flex:1;">
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-warning" onclick="startCountdown()">Démarrer</button>
+            <button class="btn btn-secondary" onclick="api('/clock/countdown/stop')">Arrêter</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Chronomètre</h3>
+        <div class="btn-row">
+            <button class="btn btn-success" onclick="api('/clock/stopwatch', {running:true})">Démarrer</button>
+            <button class="btn btn-warning" onclick="api('/clock/stopwatch', {running:false})">Pause</button>
+            <button class="btn btn-secondary" onclick="api('/clock/stopwatch/hide')">Masquer</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Fond d'écran</h3>
+        <div class="btn-grid">
+            <button class="btn btn-secondary btn-sm" onclick="api('/background/color', {color:'#000000'})">Noir</button>
+            <button class="btn btn-secondary btn-sm" onclick="api('/background/color', {color:'#1a1a2e'})">Bleu foncé</button>
+            <button class="btn btn-secondary btn-sm" onclick="api('/background/color', {color:'#0a1628'})">Marine</button>
+            <button class="btn btn-secondary btn-sm" onclick="api('/background/color', {color:'#1a0a28'})">Violet</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = `http://${location.hostname}:${location.port || 8000}`;
+    let ws, currentSong = null, currentVerseIdx = 0;
+    let searchTimer;
+
+    // ── API ──
+    async function api(path, body = null) {
+        try {
+            const opts = { method: 'POST', headers: {'Content-Type': 'application/json'} };
+            if (body) opts.body = JSON.stringify(body);
+            return await (await fetch(API_BASE + path, opts)).json();
+        } catch(e) { console.error(e); return {error: e.message}; }
+    }
+
+    async function apiGet(path) {
+        try { return await (await fetch(API_BASE + path)).json(); }
+        catch(e) { return []; }
+    }
+
+    // ── WebSocket ──
+    function connectWS() {
+        ws = new WebSocket(`ws://${location.hostname}:${location.port || 8000}/ws/live`);
+        ws.onopen = () => {
+            const el = document.getElementById('status');
+            el.textContent = 'Connecté';
+            el.classList.add('connected');
+        };
+        ws.onclose = () => {
+            const el = document.getElementById('status');
+            el.textContent = 'Hors ligne';
+            el.classList.remove('connected');
+            setTimeout(connectWS, 2000);
+        };
+        ws.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'projection' || msg.type === 'init') {
+                const p = msg.projection || msg;
+                const el = document.getElementById('current-projection');
+                if (p.active) {
+                    let info = `${p.projection_type || ''}`;
+                    if (p.title) info += ` — ${p.title}`;
+                    if (p.verse_label) info += `\n${p.verse_label}`;
+                    if (p.main_text) info += `\n${(p.main_text || '').substring(0, 120)}`;
+                    if (p.total_verses > 0) info += `\n[${p.current_verse_index+1}/${p.total_verses}]`;
+                    el.textContent = info;
+                } else {
+                    el.textContent = 'Écran noir';
+                }
+            }
+        };
+    }
+
+    // ── Tabs ──
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+        });
+    });
+
+    // ── Songs ──
+    async function loadSongbooks() {
+        const sbs = await apiGet('/songbooks');
+        const sel = document.getElementById('song-songbook');
+        sel.innerHTML = '<option value="">Tous les recueils</option>';
+        if (Array.isArray(sbs)) {
+            sbs.forEach(sb => {
+                sel.innerHTML += `<option value="${sb.code}">${sb.code} - ${sb.name}</option>`;
+            });
+        }
+    }
+
+    function debounceSongSearch() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(loadSongs, 300);
+    }
+
+    async function loadSongs() {
+        const q = document.getElementById('song-search').value;
+        const sb = document.getElementById('song-songbook').value;
+        const songs = await apiGet(`/songs?search=${encodeURIComponent(q)}&songbook=${sb}`);
+        const list = document.getElementById('song-list');
+        list.innerHTML = '';
+        if (Array.isArray(songs)) {
+            songs.forEach(s => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span class="num">${s.number ? '#'+s.number : ''}</span><span class="title">${s.title}</span>`;
+                li.onclick = () => selectSong(s.id);
+                list.appendChild(li);
+            });
+        }
+    }
+
+    async function selectSong(id) {
+        currentSong = await apiGet(`/songs/${id}`);
+        if (!currentSong || currentSong.error) return;
+
+        document.getElementById('song-detail').style.display = 'block';
+        document.getElementById('song-detail-title').textContent =
+            `${currentSong.number ? '#'+currentSong.number+' ' : ''}${currentSong.title}`;
+
+        const nav = document.getElementById('verse-nav');
+        nav.innerHTML = '';
+        (currentSong.verses || []).forEach((v, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'verse-btn' + (i === 0 ? ' active' : '');
+            btn.textContent = v.verse_label || v.verse_type || `${i+1}`;
+            btn.onclick = () => {
+                currentVerseIdx = i;
+                document.querySelectorAll('.verse-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('verse-preview').textContent = v.text;
+                api(`/projection/song/goto/${i}`);
+            };
+            nav.appendChild(btn);
+        });
+
+        if (currentSong.verses?.length) {
+            currentVerseIdx = 0;
+            document.getElementById('verse-preview').textContent = currentSong.verses[0].text;
+        }
+    }
+
+    function projectCurrentSong() {
+        if (currentSong) api('/projection/song', {song_id: currentSong.id});
+    }
+
+    function startSubtitles() {
+        if (currentSong?.verses?.length) {
+            const v = currentSong.verses[currentVerseIdx];
+            api('/subtitles/load', {
+                song_title: currentSong.title,
+                verse_label: v.verse_label || '',
+                text: v.text
+            });
+        }
+    }
+
+    // ── Bible ──
+    async function searchBible() {
+        const q = document.getElementById('bible-search').value;
+        const res = await apiGet(`/bible/search?q=${encodeURIComponent(q)}`);
+        const list = document.getElementById('bible-results');
+        list.innerHTML = '';
+        (res.results || []).forEach(r => {
+            const li = document.createElement('li');
+            const ref = `${r.short_name} ${r.chapter}:${r.verse}`;
+            li.innerHTML = `<span class="num">${ref}</span><span class="title">${r.text.substring(0, 80)}...</span>`;
+            li.onclick = () => {
+                document.getElementById('bible-text').value = r.text;
+                document.getElementById('bible-ref').value = ref;
+            };
+            list.appendChild(li);
+        });
+    }
+
+    function projectBible() {
+        api('/projection/bible', {
+            text: document.getElementById('bible-text').value,
+            reference: document.getElementById('bible-ref').value,
+        });
+    }
+
+    // ── Lower Thirds ──
+    async function loadLTs() {
+        const lts = await apiGet('/lower-thirds');
+        const list = document.getElementById('lt-list');
+        list.innerHTML = '';
+        if (Array.isArray(lts)) {
+            lts.forEach(lt => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span class="title">${lt.name}</span><span style="color:#89b4fa;font-size:13px;">${lt.title}</span>`;
+                li.onclick = () => {
+                    document.getElementById('lt-name').value = lt.name;
+                    document.getElementById('lt-title').value = lt.title;
+                    document.getElementById('lt-subtitle').value = lt.subtitle || '';
+                };
+                list.appendChild(li);
+            });
+        }
+    }
+
+    function showLT() {
+        api('/obs/lower-third', {
+            name: document.getElementById('lt-name').value,
+            title: document.getElementById('lt-title').value,
+            subtitle: document.getElementById('lt-subtitle').value,
+        });
+    }
+
+    // ── Text ──
+    function projectText() {
+        api('/projection/text', {
+            title: document.getElementById('txt-title').value,
+            text: document.getElementById('txt-content').value,
+            animation: document.getElementById('txt-anim').value,
+        });
+    }
+
+    // ── Alert ──
+    function showAlert() {
+        api('/alert/show', {
+            text: document.getElementById('alert-text').value,
+            style: document.getElementById('alert-style').value,
+            position: document.getElementById('alert-pos').value,
+            bg_color: document.getElementById('alert-bg').value,
+            text_color: document.getElementById('alert-fg').value,
+        });
+    }
+
+    // ── Countdown ──
+    function startCountdown() {
+        api('/clock/countdown', {
+            target: document.getElementById('countdown-val').value,
+            label: document.getElementById('countdown-label').value,
+        });
+    }
+
+    // ── Init ──
+    connectWS();
+    loadSongbooks();
+    loadSongs();
+    loadLTs();
+</script>
+</body>
+</html>

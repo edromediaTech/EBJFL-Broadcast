@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>EBJFL Overlay</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: transparent;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            width: 1920px;
+            height: 1080px;
+            position: relative;
+        }
+
+        /* ══ BACKGROUND LAYER ══ */
+        #bg-layer {
+            position: absolute; inset: 0; z-index: 0;
+            background: #000;
+        }
+        #bg-layer img, #bg-layer video {
+            width: 100%; height: 100%; object-fit: cover;
+        }
+
+        /* ══ PROJECTION PLEIN ÉCRAN ══ */
+        #projection {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            text-align: center; padding: 80px 120px;
+            opacity: 0; transition: opacity 0.6s ease;
+            pointer-events: none; z-index: 2;
+        }
+        #projection.visible { opacity: 1; }
+
+        #projection .bg-overlay {
+            position: absolute; inset: 0;
+            background: rgba(10, 10, 20, var(--overlay-opacity, 0.85));
+            z-index: 0;
+        }
+        #projection .content {
+            position: relative; z-index: 1; max-width: 1600px;
+        }
+
+        #proj-title {
+            font-size: 28px; font-weight: 600; color: #89b4fa;
+            margin-bottom: 12px; letter-spacing: 1px; text-transform: uppercase;
+        }
+        #proj-main {
+            font-size: 54px; font-weight: 700; color: #ffffff;
+            line-height: 1.35; text-shadow: 0 2px 20px rgba(0,0,0,0.7);
+            white-space: pre-line;
+        }
+        #proj-sub {
+            font-size: 22px; color: #a6adc8; margin-top: 16px; font-style: italic;
+        }
+        #proj-footer {
+            font-size: 18px; color: #585b70; margin-top: 24px;
+        }
+        #proj-verse-label {
+            font-size: 20px; color: #cba6f7; margin-bottom: 8px; font-weight: 500;
+        }
+        #proj-indicator {
+            position: absolute; bottom: 30px; right: 40px;
+            font-size: 16px; color: #45475a; z-index: 1;
+        }
+
+        /* ══ LOWER THIRD ══ */
+        #lower-third {
+            position: absolute; bottom: 80px; left: 60px;
+            opacity: 0; transform: translateX(-40px);
+            transition: all 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+            z-index: 10;
+        }
+        #lower-third.visible { opacity: 1; transform: translateX(0); }
+
+        .lt-bar { display: flex; align-items: stretch; }
+        .lt-accent {
+            width: 6px;
+            background: linear-gradient(180deg, #89b4fa, #cba6f7);
+            border-radius: 3px 0 0 3px;
+        }
+        .lt-content {
+            background: rgba(30, 30, 46, 0.94);
+            padding: 16px 32px; border-radius: 0 8px 8px 0;
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(137, 180, 250, 0.15); border-left: none;
+        }
+        .lt-name { font-size: 30px; font-weight: 700; color: #cdd6f4; }
+        .lt-title { font-size: 17px; color: #89b4fa; margin-top: 2px; }
+        .lt-subtitle { font-size: 14px; color: #a6adc8; margin-top: 2px; }
+        .lt-social { font-size: 13px; color: #585b70; margin-top: 4px; }
+
+        /* ══ SOUS-TITRES ══ */
+        #subtitles {
+            position: absolute; bottom: 40px; left: 50%;
+            transform: translateX(-50%); text-align: center;
+            opacity: 0; transition: opacity 0.4s ease; z-index: 5;
+        }
+        #subtitles.visible { opacity: 1; }
+
+        #sub-box {
+            background: rgba(0, 0, 0, 0.80);
+            padding: 12px 40px; border-radius: 8px;
+            backdrop-filter: blur(8px);
+        }
+        #sub-lines {
+            font-size: 36px; font-weight: 600; color: #ffffff;
+            line-height: 1.5; text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+            white-space: pre-line;
+        }
+
+        /* ══ ALERT BANNER ══ */
+        #alert {
+            position: absolute; left: 0; right: 0;
+            opacity: 0; transition: all 0.4s ease;
+            z-index: 20; pointer-events: none;
+        }
+        #alert.visible { opacity: 1; }
+        #alert.pos-top { top: 0; }
+        #alert.pos-bottom { bottom: 0; }
+        #alert.pos-center { top: 50%; transform: translateY(-50%); }
+
+        #alert-inner {
+            padding: 16px 40px; font-size: 28px; font-weight: 700;
+            text-align: center;
+        }
+
+        /* Alert ticker (scrolling) */
+        #alert.style-ticker #alert-inner {
+            white-space: nowrap; animation: ticker 15s linear infinite;
+        }
+        @keyframes ticker {
+            from { transform: translateX(100%); }
+            to { transform: translateX(-100%); }
+        }
+
+        /* Alert fullscreen */
+        #alert.style-fullscreen {
+            inset: 0; display: flex; align-items: center; justify-content: center;
+        }
+        #alert.style-fullscreen #alert-inner {
+            font-size: 48px; max-width: 80%;
+        }
+
+        /* ══ CLOCK / COUNTDOWN ══ */
+        #clock-container {
+            position: absolute; z-index: 15;
+            font-family: 'Consolas', 'Courier New', monospace;
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+        #clock-container.visible { opacity: 1; }
+        #clock-container.pos-top-right { top: 20px; right: 30px; text-align: right; }
+        #clock-container.pos-top-left { top: 20px; left: 30px; text-align: left; }
+        #clock-container.pos-bottom-right { bottom: 20px; right: 30px; text-align: right; }
+        #clock-container.pos-bottom-left { bottom: 20px; left: 30px; text-align: left; }
+
+        #clock-time {
+            font-size: 36px; font-weight: 700; color: #cdd6f4;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        }
+        #countdown-display {
+            font-size: 48px; font-weight: 700; color: #f38ba8;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        }
+        #countdown-label {
+            font-size: 18px; color: #a6adc8; margin-bottom: 4px;
+        }
+        #stopwatch-display {
+            font-size: 36px; font-weight: 700; color: #a6e3a1;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        }
+
+        /* ══ MEDIA PLAYER ══ */
+        #media-layer {
+            position: absolute; inset: 0; z-index: 25;
+            display: none; background: #000;
+        }
+        #media-layer.visible { display: flex; align-items: center; justify-content: center; }
+        #media-layer img, #media-layer video {
+            max-width: 100%; max-height: 100%; object-fit: contain;
+        }
+
+        /* ══ LOGO WATERMARK ══ */
+        #watermark {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 60px; height: 60px; opacity: 0.25; z-index: 30;
+            pointer-events: none;
+        }
+
+        /* ══ ANIMATIONS ══ */
+        .anim-fade { animation: fadeIn 0.6s ease; }
+        .anim-slide-up { animation: slideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+        .anim-slide-left { animation: slideLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+        .anim-typewriter { animation: typewriter 1s steps(40); overflow: hidden; white-space: nowrap; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideLeft { from { opacity: 0; transform: translateX(-30px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes typewriter { from { width: 0; } to { width: 100%; } }
+    </style>
+</head>
+<body>
+
+    <!-- Background Layer (image/video) -->
+    <div id="bg-layer"></div>
+
+    <!-- Projection plein écran -->
+    <div id="projection">
+        <div class="bg-overlay"></div>
+        <div class="content">
+            <div id="proj-verse-label"></div>
+            <div id="proj-title"></div>
+            <div id="proj-main"></div>
+            <div id="proj-sub"></div>
+            <div id="proj-footer"></div>
+        </div>
+        <div id="proj-indicator"></div>
+    </div>
+
+    <!-- Lower Third -->
+    <div id="lower-third">
+        <div class="lt-bar">
+            <div class="lt-accent"></div>
+            <div class="lt-content">
+                <div class="lt-name" id="lt-name"></div>
+                <div class="lt-title" id="lt-title"></div>
+                <div class="lt-subtitle" id="lt-subtitle"></div>
+                <div class="lt-social" id="lt-social"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sous-titres -->
+    <div id="subtitles">
+        <div id="sub-box">
+            <div id="sub-lines"></div>
+        </div>
+    </div>
+
+    <!-- Alert -->
+    <div id="alert" class="pos-bottom style-banner">
+        <div id="alert-inner"></div>
+    </div>
+
+    <!-- Clock / Countdown -->
+    <div id="clock-container" class="pos-top-right">
+        <div id="countdown-label"></div>
+        <div id="countdown-display"></div>
+        <div id="clock-time"></div>
+        <div id="stopwatch-display"></div>
+    </div>
+
+    <!-- Media Player -->
+    <div id="media-layer"></div>
+
+    <!-- Logo -->
+    <img id="watermark" src="/assets/logo.png" alt="">
+
+    <script>
+        const WS_URL = `ws://${location.hostname}:${location.port || 8000}/ws/live`;
+        let ws, hideTimeout, alertTimeout;
+        let stopwatchStart = 0, stopwatchElapsed = 0, stopwatchRunning = false, stopwatchInterval;
+        let countdownTarget = null, countdownInterval;
+
+        function connectWS() {
+            ws = new WebSocket(WS_URL);
+            ws.onopen = () => console.log("[EBJFL] Connecté");
+            ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
+            ws.onclose = () => setTimeout(connectWS, 2000);
+        }
+
+        function handleMessage(msg) {
+            switch (msg.type) {
+                case "init":
+                    if (msg.projection) applyProjection(msg.projection);
+                    if (msg.subtitles) applySubtitle(msg.subtitles);
+                    if (msg.media) {
+                        if (msg.media.background) applyBackground(msg.media.background);
+                        if (msg.media.alert) applyAlert(msg.media.alert);
+                        if (msg.media.clock) applyClock(msg.media.clock);
+                        if (msg.media.media) applyMedia(msg.media.media);
+                    }
+                    break;
+                case "projection": applyProjection(msg); break;
+                case "subtitle": applySubtitle(msg); break;
+                case "background": applyBackground(msg); break;
+                case "alert": applyAlert(msg); break;
+                case "clock": applyClock(msg); break;
+                case "media": applyMedia(msg); break;
+            }
+        }
+
+        // ── Background ──
+        function applyBackground(state) {
+            const el = document.getElementById("bg-layer");
+            document.documentElement.style.setProperty('--overlay-opacity', state.opacity || 0.85);
+
+            if (state.type === "color") {
+                el.innerHTML = "";
+                el.style.background = state.color || "#000";
+            } else if (state.type === "image") {
+                el.innerHTML = `<img src="${state.image_url}" alt="">`;
+                el.style.background = "none";
+            } else if (state.type === "video") {
+                el.innerHTML = `<video src="${state.video_url}" autoplay ${state.video_loop ? 'loop' : ''} muted></video>`;
+                el.style.background = "none";
+            } else if (state.type === "slideshow" && state.slideshow_urls?.length) {
+                let idx = 0;
+                el.innerHTML = `<img src="${state.slideshow_urls[0]}" alt="">`;
+                el.style.background = "none";
+                if (state.slideshow_urls.length > 1) {
+                    setInterval(() => {
+                        idx = (idx + 1) % state.slideshow_urls.length;
+                        el.querySelector("img").src = state.slideshow_urls[idx];
+                    }, (state.slideshow_interval || 10) * 1000);
+                }
+            }
+        }
+
+        // ── Projection ──
+        function applyProjection(state) {
+            const el = document.getElementById("projection");
+            const lt = document.getElementById("lower-third");
+
+            if (!state.active || state.projection_type === "blank") {
+                el.classList.remove("visible");
+                lt.classList.remove("visible");
+                return;
+            }
+            if (state.projection_type === "lower_third") {
+                el.classList.remove("visible");
+                showLowerThirdFromState(state);
+                return;
+            }
+            lt.classList.remove("visible");
+
+            const animClass = `anim-${state.animation || 'fade'}`;
+            const content = el.querySelector(".content");
+            content.className = "content " + animClass;
+
+            document.getElementById("proj-verse-label").textContent = state.verse_label || "";
+            document.getElementById("proj-title").textContent = state.title || "";
+            document.getElementById("proj-main").textContent = state.main_text || "";
+            document.getElementById("proj-sub").textContent = state.sub_text || "";
+            document.getElementById("proj-footer").textContent = state.footer || "";
+
+            const indicator = document.getElementById("proj-indicator");
+            if (state.projection_type === "song" && state.total_verses > 0) {
+                indicator.textContent = `${state.current_verse_index + 1} / ${state.total_verses}`;
+            } else {
+                indicator.textContent = "";
+            }
+            el.classList.add("visible");
+        }
+
+        // ── Lower Third ──
+        function showLowerThirdFromState(state) {
+            document.getElementById("lt-name").textContent = state.title || "";
+            document.getElementById("lt-title").textContent = state.main_text || "";
+            document.getElementById("lt-subtitle").textContent = state.sub_text || "";
+            document.getElementById("lt-social").textContent = state.footer || "";
+            document.getElementById("lower-third").classList.add("visible");
+            clearTimeout(hideTimeout);
+            hideTimeout = setTimeout(() => document.getElementById("lower-third").classList.remove("visible"), 10000);
+        }
+
+        // ── Subtitles ──
+        function applySubtitle(state) {
+            const el = document.getElementById("subtitles");
+            if (!state.active) { el.classList.remove("visible"); return; }
+            document.getElementById("sub-lines").textContent = (state.lines || []).join("\n");
+            el.classList.add("visible");
+        }
+
+        // ── Alert ──
+        function applyAlert(state) {
+            const el = document.getElementById("alert");
+            if (!state.active) { el.classList.remove("visible"); return; }
+
+            el.className = `pos-${state.position || 'bottom'} style-${state.style || 'banner'}`;
+            const inner = document.getElementById("alert-inner");
+            inner.textContent = state.text || "";
+            inner.style.background = state.bg_color || "#f38ba8";
+            inner.style.color = state.text_color || "#1e1e2e";
+            el.classList.add("visible");
+
+            clearTimeout(alertTimeout);
+            if (state.duration > 0) {
+                alertTimeout = setTimeout(() => el.classList.remove("visible"), state.duration * 1000);
+            }
+        }
+
+        // ── Clock / Countdown / Stopwatch ──
+        function applyClock(state) {
+            const container = document.getElementById("clock-container");
+            container.className = `pos-${(state.position || 'top-right').replace(/-/g, '-')}`;
+
+            const clockEl = document.getElementById("clock-time");
+            const cdLabel = document.getElementById("countdown-label");
+            const cdDisplay = document.getElementById("countdown-display");
+            const swDisplay = document.getElementById("stopwatch-display");
+
+            let visible = false;
+
+            // Clock
+            if (state.show_clock) {
+                visible = true;
+                const fmt = state.clock_format || "HH:mm";
+                function updateClock() {
+                    const now = new Date();
+                    let t = fmt.replace("HH", String(now.getHours()).padStart(2, '0'))
+                              .replace("mm", String(now.getMinutes()).padStart(2, '0'))
+                              .replace("ss", String(now.getSeconds()).padStart(2, '0'));
+                    clockEl.textContent = t;
+                }
+                updateClock();
+                clearInterval(window._clockInterval);
+                window._clockInterval = setInterval(updateClock, 1000);
+                clockEl.style.display = "block";
+            } else {
+                clockEl.style.display = "none";
+                clearInterval(window._clockInterval);
+            }
+
+            // Countdown
+            if (state.show_countdown && state.countdown_target) {
+                visible = true;
+                cdLabel.textContent = state.countdown_label || "";
+                cdLabel.style.display = state.countdown_label ? "block" : "none";
+
+                let target;
+                const match = state.countdown_target.match(/^(\d+):(\d+):(\d+)$/);
+                if (match) {
+                    target = Date.now() + (parseInt(match[1])*3600 + parseInt(match[2])*60 + parseInt(match[3]))*1000;
+                } else {
+                    target = new Date(state.countdown_target).getTime();
+                }
+                countdownTarget = target;
+
+                clearInterval(countdownInterval);
+                countdownInterval = setInterval(() => {
+                    const remaining = Math.max(0, countdownTarget - Date.now());
+                    const h = Math.floor(remaining / 3600000);
+                    const m = Math.floor((remaining % 3600000) / 60000);
+                    const s = Math.floor((remaining % 60000) / 1000);
+                    cdDisplay.textContent = h > 0
+                        ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+                        : `${m}:${String(s).padStart(2,'0')}`;
+                    if (remaining <= 0) { clearInterval(countdownInterval); cdDisplay.textContent = "00:00"; }
+                }, 200);
+                cdDisplay.style.display = "block";
+            } else {
+                cdDisplay.style.display = "none";
+                cdLabel.style.display = "none";
+                clearInterval(countdownInterval);
+            }
+
+            // Stopwatch
+            if (state.show_stopwatch) {
+                visible = true;
+                if (state.stopwatch_running && !stopwatchRunning) {
+                    stopwatchStart = Date.now() - stopwatchElapsed;
+                    stopwatchRunning = true;
+                    clearInterval(stopwatchInterval);
+                    stopwatchInterval = setInterval(() => {
+                        stopwatchElapsed = Date.now() - stopwatchStart;
+                        const m = Math.floor(stopwatchElapsed / 60000);
+                        const s = Math.floor((stopwatchElapsed % 60000) / 1000);
+                        swDisplay.textContent = `${m}:${String(s).padStart(2,'0')}`;
+                    }, 200);
+                } else if (!state.stopwatch_running && stopwatchRunning) {
+                    stopwatchRunning = false;
+                    clearInterval(stopwatchInterval);
+                }
+                swDisplay.style.display = "block";
+            } else {
+                swDisplay.style.display = "none";
+                stopwatchRunning = false;
+                stopwatchElapsed = 0;
+                clearInterval(stopwatchInterval);
+            }
+
+            container.classList.toggle("visible", visible);
+        }
+
+        // ── Media ──
+        function applyMedia(state) {
+            const el = document.getElementById("media-layer");
+            if (!state.active) { el.classList.remove("visible"); el.innerHTML = ""; return; }
+
+            if (state.type === "image") {
+                el.innerHTML = `<img src="${state.url}" alt="">`;
+            } else if (state.type === "video") {
+                el.innerHTML = `<video src="${state.url}" ${state.playing ? 'autoplay' : ''} ${state.loop ? 'loop' : ''} style="width:100%;height:100%;object-fit:contain;"></video>`;
+            } else if (state.type === "web") {
+                el.innerHTML = `<iframe src="${state.url}" style="width:100%;height:100%;border:none;"></iframe>`;
+            }
+            el.classList.add("visible");
+        }
+
+        connectWS();
+    </script>
+</body>
+</html>
