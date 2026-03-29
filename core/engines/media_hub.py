@@ -133,7 +133,7 @@ class MediaHub:
             file_type=ftype,
             extension=ext,
             size=len(content),
-            path=str(file_path.relative_to(Path("."))),
+            path=str(file_path.relative_to(Path("."))).replace("\\", "/"),
             uploaded_at=datetime.now().isoformat(),
             status="ready",
         )
@@ -169,7 +169,7 @@ class MediaHub:
             img.thumbnail((320, 180))
             thumb_path = dest_dir / f"{file_id}_thumb.jpg"
             img.convert("RGB").save(thumb_path, "JPEG", quality=80)
-            return str(thumb_path.relative_to(Path(".")))
+            return str(thumb_path.relative_to(Path("."))).replace("\\", "/")
         except Exception:
             return ""
 
@@ -190,7 +190,7 @@ class MediaHub:
                 # Fallback: extract slide content as simple images
                 slides = self._convert_pptx_basic(src, slides_dir)
 
-            mf.slides = [str(Path(s).relative_to(Path("."))) for s in slides]
+            mf.slides = [str(Path(s).relative_to(Path("."))).replace("\\", "/") for s in slides]
             mf.total_slides = len(slides)
             mf.status = "ready"
 
@@ -292,7 +292,7 @@ class MediaHub:
                 img.save(out)
                 slides.append(out)
 
-            mf.slides = [str(Path(s).relative_to(Path("."))) for s in slides]
+            mf.slides = [str(Path(s).relative_to(Path("."))).replace("\\", "/") for s in slides]
             mf.total_slides = len(slides)
             mf.status = "ready"
             if slides:
