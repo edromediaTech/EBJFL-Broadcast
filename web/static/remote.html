@@ -292,8 +292,8 @@
     <div id="slide-controls" style="display:none; margin-top:12px;">
         <div class="section-title" id="slide-title">Diaporama</div>
 
-        <!-- Preview de la slide courante -->
-        <div style="background:#000;border-radius:8px;overflow:hidden;margin-bottom:10px;position:relative;">
+        <!-- Preview de la slide courante (40%) -->
+        <div style="background:#000;border-radius:8px;overflow:hidden;margin-bottom:10px;position:relative;width:40%;margin-left:auto;margin-right:auto;">
             <img id="slide-preview" src="" alt="" style="width:100%;display:block;border-radius:8px;">
             <div id="slide-indicator-overlay" style="position:absolute;bottom:8px;right:10px;background:rgba(0,0,0,0.7);
                 color:#cdd6f4;padding:4px 10px;border-radius:4px;font-size:13px;font-weight:700;">1 / 1</div>
@@ -651,11 +651,24 @@
     let currentMediaFile = null;
     let currentSlideIdx = 0;
 
+    let allMediaFiles = []; // cache de tous les fichiers pour la navigation
+
     async function projectMediaFile(f) {
-        // Fetch full file details with slides
+        // Fetch full file details
         const full = await apiGet(`/media/files/${f.id}`);
         currentMediaFile = full;
-        currentSlideIdx = 0;
+
+        // Pour les images, construire la liste de toutes les images comme slides
+        if (full.file_type === 'image' && (!full.slides || full.slides.length === 0)) {
+            const allFiles = await apiGet('/media/files?type=image');
+            allMediaFiles = allFiles.sort((a, b) => a.original_name.localeCompare(b.original_name));
+            full.slides = allMediaFiles.map(mf => mf.path);
+            full.total_slides = full.slides.length;
+            currentSlideIdx = full.slides.indexOf(full.path);
+            if (currentSlideIdx < 0) currentSlideIdx = 0;
+        } else {
+            currentSlideIdx = 0;
+        }
 
         await api(`/media/files/${f.id}/project`);
 
@@ -663,14 +676,8 @@
         if (full.slides && full.slides.length > 0) {
             ctrl.style.display = 'block';
             document.getElementById('slide-title').textContent = full.original_name;
-            renderSlidePreview(0);
+            renderSlidePreview(currentSlideIdx);
             renderSlideThumbs();
-        } else if (full.file_type === 'image') {
-            ctrl.style.display = 'block';
-            document.getElementById('slide-title').textContent = full.original_name;
-            document.getElementById('slide-preview').src = `${API_BASE}/${full.path}`;
-            document.getElementById('slide-indicator-overlay').textContent = '1 / 1';
-            document.getElementById('slide-thumbs').innerHTML = '';
         } else {
             ctrl.style.display = 'none';
         }

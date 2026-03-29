@@ -337,64 +337,86 @@ class MediaHub:
 
     # ── Slideshow Control ──
 
+    def _get_slides(self, mf: MediaFile) -> list[str]:
+        """Retourne la liste des slides pour un fichier.
+        Pour un PPTX/PDF converti : les slides générées.
+        Pour une image seule : toutes les images uploadées (navigation entre fichiers).
+        """
+        if mf.slides:
+            return mf.slides
+        if mf.file_type == "image":
+            # Collecter toutes les images comme un diaporama
+            all_images = sorted(
+                [f for f in self.files.values() if f.file_type == "image"],
+                key=lambda f: f.original_name
+            )
+            return [f.path for f in all_images]
+        return [mf.path]
+
+    def _get_slide_index(self, slides: list[str], mf: MediaFile) -> int:
+        """Trouve l'index du fichier courant dans la liste des slides."""
+        try:
+            return slides.index(mf.path)
+        except ValueError:
+            return 0
+
     async def project_file(self, file_id: str, slide_index: int = 0):
         mf = self.files.get(file_id)
         if not mf:
             return
 
-        if mf.file_type == "image":
-            self.slideshow = SlideshowState(
-                active=True, media_id=file_id,
-                current_slide=0, total_slides=1,
-                slide_url=f"/{mf.path}", title=mf.original_name,
-            )
-        elif mf.slides:
-            idx = max(0, min(slide_index, len(mf.slides) - 1))
-            self.slideshow = SlideshowState(
-                active=True, media_id=file_id,
-                current_slide=idx, total_slides=len(mf.slides),
-                slide_url=f"/{mf.slides[idx]}", title=mf.original_name,
-            )
-        elif mf.file_type == "video":
-            self.slideshow = SlideshowState(
-                active=True, media_id=file_id,
-                current_slide=0, total_slides=0,
-                slide_url=f"/{mf.path}", title=mf.original_name,
-            )
+        slides = self._get_slides(mf)
+        if mf.file_type == "image" and not mf.slides:
+            slide_index = self._get_slide_index(slides, mf)
 
+        idx = max(0, min(slide_index, len(slides) - 1)) if slides else 0
+        url = f"/{slides[idx]}" if slides else f"/{mf.path}"
+
+        self.slideshow = SlideshowState(
+            active=True, media_id=file_id,
+            current_slide=idx, total_slides=len(slides),
+            slide_url=url, title=mf.original_name,
+        )
         await self._notify("slideshow", asdict(self.slideshow))
+
+    def _current_slides(self) -> list[str]:
+        """Retourne les slides du diaporama en cours."""
+        mf = self.files.get(self.slideshow.media_id)
+        if not mf:
+            return []
+        return self._get_slides(mf)
 
     async def slide_next(self):
         if not self.slideshow.active:
             return
-        mf = self.files.get(self.slideshow.media_id)
-        if not mf or not mf.slides:
+        slides = self._current_slides()
+        if not slides:
             return
-        idx = min(self.slideshow.current_slide + 1, len(mf.slides) - 1)
+        idx = min(self.slideshow.current_slide + 1, len(slides) - 1)
         self.slideshow.current_slide = idx
-        self.slideshow.slide_url = f"/{mf.slides[idx]}"
+        self.slideshow.slide_url = f"/{slides[idx]}"
         await self._notify("slideshow", asdict(self.slideshow))
 
     async def slide_prev(self):
         if not self.slideshow.active:
             return
-        mf = self.files.get(self.slideshow.media_id)
-        if not mf or not mf.slides:
+        slides = self._current_slides()
+        if not slides:
             return
         idx = max(self.slideshow.current_slide - 1, 0)
         self.slideshow.current_slide = idx
-        self.slideshow.slide_url = f"/{mf.slides[idx]}"
+        self.slideshow.slide_url = f"/{slides[idx]}"
         await self._notify("slideshow", asdict(self.slideshow))
 
     async def slide_goto(self, index: int):
         if not self.slideshow.active:
             return
-        mf = self.files.get(self.slideshow.media_id)
-        if not mf or not mf.slides:
+        slides = self._current_slides()
+        if not slides:
             return
-        idx = max(0, min(index, len(mf.slides) - 1))
+        idx = max(0, min(index, len(slides) - 1))
         self.slideshow.current_slide = idx
-        self.slideshow.slide_url = f"/{mf.slides[idx]}"
+        self.slideshow.slide_url = f"/{slides[idx]}"
         await self._notify("slideshow", asdict(self.slideshow))
 
     async def stop_slideshow(self):
