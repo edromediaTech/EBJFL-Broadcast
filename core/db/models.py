@@ -160,6 +160,18 @@ def init_db():
             overlay_opacity REAL DEFAULT 0.85,
             custom_css TEXT DEFAULT ''
         );
+        -- === USERS & AUTH ===
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            display_name TEXT NOT NULL DEFAULT '',
+            pin TEXT DEFAULT '',              -- PIN rapide pour tablettes (hashé)
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'guest' CHECK(role IN ('admin', 'operator', 'presenter', 'guest')),
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP
+        );
     """)
     conn.commit()
 
@@ -184,6 +196,21 @@ def init_db():
                 ('MEL_FR', 'Mélodie (Français)', 'fr'),
                 ('MEL_CR', 'Mélodie (Créole)', 'ht')
         """)
+        conn.commit()
+
+    # Insert default admin user (only if no users)
+    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
+        import hashlib
+        users_default = [
+            ("sironel", "Sironel", "phigando", "1234", "admin"),
+            ("admin", "Administrateur", "admin", "0000", "admin"),
+        ]
+        for uname, dname, pwd, pin, role in users_default:
+            pwd_hash = hashlib.sha256(pwd.encode()).hexdigest()
+            pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+            conn.execute(
+                "INSERT INTO users (username, display_name, password_hash, pin, role) VALUES (?, ?, ?, ?, ?)",
+                (uname, dname, pwd_hash, pin_hash, role))
         conn.commit()
 
     conn.close()

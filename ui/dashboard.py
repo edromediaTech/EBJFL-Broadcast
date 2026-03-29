@@ -1261,6 +1261,184 @@ class ImportTab(QWidget):
 
 
 # ══════════════════════════════════════
+#  Tab: Utilisateurs
+# ══════════════════════════════════════
+
+class UsersTab(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QHBoxLayout(self)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # Left: user list
+        left = QWidget()
+        ll = QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
+        ll.addWidget(QLabel("Utilisateurs"))
+
+        self.user_list = QListWidget()
+        self.user_list.itemClicked.connect(self.select_user)
+        ll.addWidget(self.user_list)
+
+        btn_refresh = QPushButton("Actualiser")
+        btn_refresh.setProperty("class", "secondary")
+        btn_refresh.clicked.connect(self.load_users)
+        ll.addWidget(btn_refresh)
+
+        # Right: user form
+        right = QWidget()
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(0, 0, 0, 0)
+
+        form_group = QGroupBox("Créer / Modifier un utilisateur")
+        fl = QVBoxLayout()
+
+        for label, attr, placeholder in [
+            ("Nom d'utilisateur:", "user_username", "ex: operateur1"),
+            ("Nom affiché:", "user_display", "ex: Jean Dupont"),
+            ("Mot de passe:", "user_password", "Min 4 caractères"),
+            ("PIN (4-6 chiffres):", "user_pin", "ex: 1234"),
+        ]:
+            row = QHBoxLayout()
+            row.addWidget(QLabel(label))
+            inp = QLineEdit()
+            inp.setPlaceholderText(placeholder)
+            if "passe" in label.lower():
+                inp.setEchoMode(QLineEdit.EchoMode.Password)
+            setattr(self, attr, inp)
+            row.addWidget(inp)
+            fl.addLayout(row)
+
+        role_row = QHBoxLayout()
+        role_row.addWidget(QLabel("Rôle:"))
+        self.user_role = QComboBox()
+        self.user_role.addItems(["operator", "admin", "presenter", "guest"])
+        role_row.addWidget(self.user_role)
+        fl.addLayout(role_row)
+
+        fl.addWidget(QLabel("Permissions par rôle:"))
+        perms = QLabel(
+            "  admin: Accès complet (config, users, import, suppression)\n"
+            "  operator: Projection, chants, LT, planning, médias\n"
+            "  presenter: Navigation slides, upload, projection\n"
+            "  guest: Upload de fichiers uniquement"
+        )
+        perms.setFont(QFont("Consolas", 9))
+        perms.setStyleSheet("color: #a6adc8; padding: 4px;")
+        fl.addWidget(perms)
+
+        form_group.setLayout(fl)
+        rl.addWidget(form_group)
+
+        btn_row = QHBoxLayout()
+        btn_create = QPushButton("Créer")
+        btn_create.setProperty("class", "success")
+        btn_create.clicked.connect(self.create_user)
+        btn_row.addWidget(btn_create)
+
+        btn_update = QPushButton("Modifier")
+        btn_update.setProperty("class", "warning")
+        btn_update.clicked.connect(self.update_user)
+        btn_row.addWidget(btn_update)
+
+        btn_delete = QPushButton("Supprimer")
+        btn_delete.setProperty("class", "danger")
+        btn_delete.clicked.connect(self.delete_user)
+        btn_row.addWidget(btn_delete)
+        rl.addLayout(btn_row)
+
+        self.user_status = QLabel("")
+        rl.addWidget(self.user_status)
+
+        # Default credentials info
+        info = QGroupBox("Identifiants par défaut")
+        il = QVBoxLayout()
+        il.addWidget(QLabel("Admin: admin / admin (PIN: 1234)"))
+        il.addWidget(QLabel("Changez le mot de passe admin dès que possible!"))
+        info.setLayout(il)
+        rl.addWidget(info)
+
+        rl.addStretch()
+
+        splitter.addWidget(left)
+        splitter.addWidget(right)
+        splitter.setSizes([300, 500])
+        layout.addWidget(splitter)
+
+        self._current_user_id = None
+        self.load_users()
+
+    def load_users(self):
+        users = _get("/auth/users")
+        self.user_list.clear()
+        if isinstance(users, list):
+            for u in users:
+                role_icon = {"admin": "\u2b50", "operator": "\u2699", "guest": "\ud83d\udc64"}.get(u["role"], "")
+                active = "" if u.get("is_active", 1) else " [INACTIF]"
+                item = QListWidgetItem(f"{role_icon} {u['username']} ({u['role']}){active}")
+                item.setData(Qt.ItemDataRole.UserRole, u)
+                self.user_list.addItem(item)
+
+    def select_user(self, item):
+        u = item.data(Qt.ItemDataRole.UserRole)
+        self._current_user_id = u["id"]
+        self.user_username.setText(u.get("username", ""))
+        self.user_display.setText(u.get("display_name", ""))
+        self.user_password.clear()
+        self.user_pin.clear()
+        idx = self.user_role.findText(u.get("role", "operator"))
+        if idx >= 0:
+            self.user_role.setCurrentIndex(idx)
+        self.user_status.setText(f"Utilisateur chargé: {u['username']}")
+
+    def create_user(self):
+        if not self.user_username.text() or not self.user_password.text():
+            self.user_status.setText("Nom d'utilisateur et mot de passe requis.")
+            return
+        result = _post("/auth/users", json={
+            "username": self.user_username.text(),
+            "display_name": self.user_display.text(),
+            "password": self.user_password.text(),
+            "pin": self.user_pin.text(),
+            "role": self.user_role.currentText(),
+        })
+        if result.get("ok"):
+            self.user_status.setText(f"Utilisateur créé (ID: {result['id']})")
+            self.load_users()
+        else:
+            self.user_status.setText(f"Erreur: {result.get('error', result)}")
+
+    def update_user(self):
+        if not self._current_user_id:
+            self.user_status.setText("Sélectionnez un utilisateur d'abord.")
+            return
+        import requests
+        data = {"display_name": self.user_display.text(), "role": self.user_role.currentText()}
+        if self.user_password.text():
+            data["password"] = self.user_password.text()
+        if self.user_pin.text():
+            data["pin"] = self.user_pin.text()
+        r = requests.put(f"{API}/auth/users/{self._current_user_id}", json=data, timeout=3)
+        if r.json().get("ok"):
+            self.user_status.setText("Utilisateur modifié.")
+            self.load_users()
+        else:
+            self.user_status.setText(f"Erreur: {r.text}")
+
+    def delete_user(self):
+        if not self._current_user_id:
+            return
+        from PyQt6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(self, "Confirmer", "Supprimer cet utilisateur?")
+        if reply == QMessageBox.StandardButton.Yes:
+            import requests
+            requests.delete(f"{API}/auth/users/{self._current_user_id}", timeout=3)
+            self._current_user_id = None
+            self.user_status.setText("Utilisateur supprimé.")
+            self.load_users()
+
+
+# ══════════════════════════════════════
 #  Server Thread
 # ══════════════════════════════════════
 
@@ -1325,6 +1503,7 @@ class Dashboard(QMainWindow):
         self.lt_tab = LowerThirdsTab()
         self.planning_tab = PlanningTab()
         self.import_tab = ImportTab()
+        self.users_tab = UsersTab()
 
         tabs.addTab(self.status_tab, "Connexion")
         tabs.addTab(self.projection_tab, "Projection")
@@ -1332,6 +1511,7 @@ class Dashboard(QMainWindow):
         tabs.addTab(self.lt_tab, "Lower Thirds")
         tabs.addTab(self.planning_tab, "Planning")
         tabs.addTab(self.import_tab, "Import / Gestion")
+        tabs.addTab(self.users_tab, "Utilisateurs")
 
         main_layout.addWidget(tabs)
         self.setCentralWidget(central)

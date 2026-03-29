@@ -114,6 +114,7 @@
     <img src="/assets/logo.png" alt="EBJFL">
     <h1>EBJFL-Broadcast</h1>
     <div class="status" id="status">Hors ligne</div>
+    <button onclick="logout()" style="background:#f38ba8;color:#1e1e2e;border:none;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;">Déconnexion</button>
 </header>
 
 <div class="tabs" id="tabs">
@@ -360,24 +361,61 @@
     const API_BASE = `http://${location.hostname}:${location.port || 8000}`;
     let ws, currentSong = null, currentVerseIdx = 0;
     let searchTimer;
+    let authToken = localStorage.getItem('ebjfl_token') || '';
+    let currentUser = JSON.parse(localStorage.getItem('ebjfl_user') || 'null');
+
+    // ── Auth check ──
+    function checkAuth() {
+        if (!authToken) {
+            location.href = `/static/login.html?redirect=${encodeURIComponent(location.pathname)}`;
+            return false;
+        }
+        // Show user info in header
+        if (currentUser) {
+            const s = document.getElementById('status');
+            s.textContent = `${currentUser.display_name || currentUser.username} (${currentUser.role})`;
+
+            // Hide admin-only elements for non-admins
+            if (currentUser.role === 'guest') {
+                document.querySelectorAll('[data-role="operator"]').forEach(el => el.style.display = 'none');
+            }
+        }
+        return true;
+    }
+
+    function logout() {
+        localStorage.removeItem('ebjfl_token');
+        localStorage.removeItem('ebjfl_user');
+        location.href = '/static/login.html';
+    }
+
+    function authHeaders() {
+        return authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+    }
 
     // ── API ──
     async function api(path, body = null) {
         try {
-            const opts = { method: 'POST', headers: {'Content-Type': 'application/json'} };
+            const opts = { method: 'POST', headers: {'Content-Type': 'application/json', ...authHeaders()} };
             if (body) opts.body = JSON.stringify(body);
-            return await (await fetch(API_BASE + path, opts)).json();
+            const res = await fetch(API_BASE + path, opts);
+            if (res.status === 401) { logout(); return {}; }
+            return await res.json();
         } catch(e) { console.error(e); return {error: e.message}; }
     }
 
     async function apiGet(path) {
-        try { return await (await fetch(API_BASE + path)).json(); }
-        catch(e) { return []; }
+        try {
+            const res = await fetch(API_BASE + path, { headers: authHeaders() });
+            if (res.status === 401) { logout(); return []; }
+            return await res.json();
+        } catch(e) { return []; }
     }
 
     // ── WebSocket ──
     function connectWS() {
-        ws = new WebSocket(`ws://${location.hostname}:${location.port || 8000}/ws/live`);
+        const wsUrl = `ws://${location.hostname}:${location.port || 8000}/ws/live${authToken ? '?token=' + authToken : ''}`;
+        ws = new WebSocket(wsUrl);
         ws.onopen = () => {
             const el = document.getElementById('status');
             el.textContent = 'Connecté';
@@ -739,11 +777,13 @@
     }
 
     // ── Init ──
-    connectWS();
-    loadSongbooks();
-    loadSongs();
-    loadLTs();
-    loadMediaFiles('');
+    if (checkAuth()) {
+        connectWS();
+        loadSongbooks();
+        loadSongs();
+        loadLTs();
+        loadMediaFiles('');
+    }
 </script>
 </body>
 </html>

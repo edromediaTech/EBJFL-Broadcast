@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EBJFL - Connexion</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #1e1e2e; color: #cdd6f4;
+            min-height: 100vh; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .logo { width: 80px; height: 80px; border-radius: 50%; margin-bottom: 16px; }
+        h1 { font-size: 22px; color: #89b4fa; margin-bottom: 4px; text-align: center; }
+        .subtitle { font-size: 13px; color: #a6adc8; margin-bottom: 24px; text-align: center; }
+
+        .card {
+            background: #313244; border-radius: 12px; padding: 24px;
+            width: 100%; max-width: 360px; border: 1px solid #45475a;
+        }
+        .card h2 { font-size: 16px; color: #89b4fa; margin-bottom: 16px; text-align: center; }
+
+        .tabs {
+            display: flex; margin-bottom: 16px; border-radius: 8px; overflow: hidden;
+            border: 1px solid #45475a;
+        }
+        .tab {
+            flex: 1; padding: 10px; text-align: center; cursor: pointer;
+            background: #1e1e2e; color: #6c7086; font-weight: 600; font-size: 14px;
+        }
+        .tab.active { background: #89b4fa; color: #1e1e2e; }
+
+        input {
+            width: 100%; padding: 12px; border: 1px solid #45475a;
+            border-radius: 8px; background: #1e1e2e; color: #cdd6f4;
+            font-size: 16px; margin-bottom: 10px; text-align: center;
+        }
+        input:focus { outline: none; border-color: #89b4fa; }
+
+        .btn {
+            display: block; width: 100%; padding: 14px; border: none; border-radius: 8px;
+            font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 8px;
+            background: #89b4fa; color: #1e1e2e;
+        }
+        .btn:active { opacity: 0.7; }
+
+        .pin-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+            margin-bottom: 12px;
+        }
+        .pin-btn {
+            padding: 16px; border: 1px solid #45475a; border-radius: 10px;
+            background: #1e1e2e; color: #cdd6f4; font-size: 24px; font-weight: 700;
+            cursor: pointer; text-align: center;
+        }
+        .pin-btn:active { background: #89b4fa; color: #1e1e2e; }
+        .pin-btn.wide { grid-column: span 2; }
+        .pin-btn.danger { background: #45475a; color: #f38ba8; }
+
+        .pin-display {
+            text-align: center; font-size: 32px; letter-spacing: 12px;
+            color: #89b4fa; margin-bottom: 16px; min-height: 40px;
+        }
+
+        .error {
+            color: #f38ba8; font-size: 13px; text-align: center;
+            margin-top: 8px; min-height: 20px;
+        }
+
+        .role-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+        }
+        .role-admin { background: #f38ba8; color: #1e1e2e; }
+        .role-operator { background: #89b4fa; color: #1e1e2e; }
+        .role-guest { background: #a6adc8; color: #1e1e2e; }
+    </style>
+</head>
+<body>
+    <img src="/assets/logo.png" class="logo" alt="EBJFL">
+    <h1>EBJFL-Broadcast</h1>
+    <div class="subtitle">Connexion</div>
+
+    <div class="card">
+        <div class="tabs">
+            <div class="tab active" onclick="showTab('pin')">PIN</div>
+            <div class="tab" onclick="showTab('password')">Mot de passe</div>
+        </div>
+
+        <!-- PIN Login -->
+        <div id="tab-pin">
+            <div class="pin-display" id="pin-display"></div>
+            <div class="pin-grid">
+                <div class="pin-btn" onclick="addPin('1')">1</div>
+                <div class="pin-btn" onclick="addPin('2')">2</div>
+                <div class="pin-btn" onclick="addPin('3')">3</div>
+                <div class="pin-btn" onclick="addPin('4')">4</div>
+                <div class="pin-btn" onclick="addPin('5')">5</div>
+                <div class="pin-btn" onclick="addPin('6')">6</div>
+                <div class="pin-btn" onclick="addPin('7')">7</div>
+                <div class="pin-btn" onclick="addPin('8')">8</div>
+                <div class="pin-btn" onclick="addPin('9')">9</div>
+                <div class="pin-btn danger" onclick="clearPin()">C</div>
+                <div class="pin-btn" onclick="addPin('0')">0</div>
+                <div class="pin-btn" onclick="loginPin()" style="background:#a6e3a1;color:#1e1e2e;">OK</div>
+            </div>
+        </div>
+
+        <!-- Password Login -->
+        <div id="tab-password" style="display:none;">
+            <input type="text" id="username" placeholder="Nom d'utilisateur" autocomplete="username">
+            <input type="password" id="password" placeholder="Mot de passe" autocomplete="current-password">
+            <button class="btn" onclick="loginPassword()">Se connecter</button>
+        </div>
+
+        <div class="error" id="error"></div>
+    </div>
+
+    <script>
+        const API = `http://${location.hostname}:${location.port || 8000}`;
+        let pin = '';
+
+        function showTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-pin').style.display = tab === 'pin' ? 'block' : 'none';
+            document.getElementById('tab-password').style.display = tab === 'password' ? 'block' : 'none';
+            event.target.classList.add('active');
+            document.getElementById('error').textContent = '';
+        }
+
+        function addPin(n) {
+            if (pin.length < 6) {
+                pin += n;
+                document.getElementById('pin-display').textContent = '●'.repeat(pin.length);
+            }
+        }
+
+        function clearPin() {
+            pin = '';
+            document.getElementById('pin-display').textContent = '';
+        }
+
+        async function loginPin() {
+            if (!pin) return;
+            await doLogin({ pin });
+        }
+
+        async function loginPassword() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            if (!username || !password) return;
+            await doLogin({ username, password });
+        }
+
+        async function doLogin(body) {
+            try {
+                const res = await fetch(`${API}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await res.json();
+
+                if (data.ok) {
+                    // Save token
+                    localStorage.setItem('ebjfl_token', data.token);
+                    localStorage.setItem('ebjfl_user', JSON.stringify(data.user));
+
+                    // Redirect based on role
+                    const target = new URLSearchParams(location.search).get('redirect') || '/static/remote.html';
+                    location.href = target;
+                } else {
+                    document.getElementById('error').textContent = data.error || 'Erreur de connexion';
+                    clearPin();
+                }
+            } catch (e) {
+                document.getElementById('error').textContent = 'Serveur inaccessible';
+            }
+        }
+
+        // Check if already logged in
+        const token = localStorage.getItem('ebjfl_token');
+        if (token) {
+            fetch(`${API}/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.username) {
+                        const target = new URLSearchParams(location.search).get('redirect') || '/static/remote.html';
+                        location.href = target;
+                    }
+                }).catch(() => {});
+        }
+
+        // Enter key for password login
+        document.getElementById('password')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') loginPassword();
+        });
+    </script>
+</body>
+</html>

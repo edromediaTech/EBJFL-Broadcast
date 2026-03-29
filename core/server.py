@@ -9,13 +9,19 @@ from contextlib import asynccontextmanager
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Body, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Body, UploadFile, File, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from core.obs_bridge import obs_bridge
 from core.config import config
+from core.auth import (
+    authenticate_user, authenticate_by_pin, create_token, get_current_user,
+    require_admin, require_operator, require_any, authenticate_ws,
+    list_users, create_user, update_user, delete_user, update_last_login,
+    get_optional_user,
+)
 from core.db.models import init_db
 from core.db import crud
 from core.engines.projection import projection
@@ -693,12 +699,125 @@ def get_qr_code():
 
 
 # ══════════════════════════════════════
+#  AUTH (Login, Users, Roles)
+# ══════════════════════════════════════
+
+class LoginRequest(BaseModel):
+    username: str = ""
+    password: str = ""
+    pin: str = ""
+
+@app.post("/auth/login")
+def auth_login(data: LoginRequest):
+    """Login par username/password ou par PIN."""
+    user = None
+    if data.pin:
+        user = authenticate_by_pin(data.pin)
+    elif data.username and data.password:
+        user = authenticate_user(data.username, data.password)
+
+    if not user:
+        return JSONResponse(status_code=401, content={"ok": False, "error": "Identifiants incorrects"})
+
+    update_last_login(user["id"])
+    token = create_token(user["id"], user["username"], user["role"])
+    return {
+        "ok": True,
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "display_name": user["display_name"],
+            "role": user["role"],
+        }
+    }
+
+
+@app.get("/auth/me")
+def auth_me(user: dict = Depends(get_current_user)):
+    """Retourne l'utilisateur courant."""
+    return user
+
+
+@app.get("/auth/users")
+def auth_list_users(user: dict = Depends(require_admin)):
+    """Liste tous les utilisateurs (admin only)."""
+    return list_users()
+
+
+class UserCreate(BaseModel):
+    username: str
+    display_name: str = ""
+    password: str
+    pin: str = ""
+    role: str = "operator"
+
+@app.post("/auth/users")
+def auth_create_user(data: UserCreate, user: dict = Depends(require_admin)):
+    """Créer un utilisateur (admin only)."""
+    try:
+        uid = create_user(data.username, data.display_name, data.password, data.role, data.pin)
+        return {"ok": True, "id": uid}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
+
+
+class UserUpdate(BaseModel):
+    display_name: str = ""
+    role: str = ""
+    password: str = ""
+    pin: str = ""
+    is_active: bool | None = None
+
+@app.put("/auth/users/{user_id}")
+def auth_update_user(user_id: int, data: UserUpdate, user: dict = Depends(require_admin)):
+    """Modifier un utilisateur (admin only)."""
+    fields = {k: v for k, v in data.model_dump().items() if v is not None and v != ""}
+    ok = update_user(user_id, **fields)
+    return {"ok": ok}
+
+
+@app.delete("/auth/users/{user_id}")
+def auth_delete_user(user_id: int, user: dict = Depends(require_admin)):
+    """Supprimer un utilisateur (admin only, sauf admin)."""
+    ok = delete_user(user_id)
+    return {"ok": ok}
+
+
+# ── Protected endpoints (add Depends to sensitive routes) ──
+
+@app.delete("/songs/{song_id}/protected")
+def delete_song_protected(song_id: int, user: dict = Depends(require_operator)):
+    crud.song_delete(song_id)
+    return {"ok": True}
+
+
+@app.delete("/lower-thirds/{lt_id}/protected")
+def delete_lt_protected(lt_id: int, user: dict = Depends(require_operator)):
+    crud.lt_delete(lt_id)
+    return {"ok": True}
+
+
+@app.delete("/texts/{text_id}/protected")
+def delete_text_protected(text_id: int, user: dict = Depends(require_operator)):
+    crud.text_delete(text_id)
+    return {"ok": True}
+
+
+@app.delete("/media/files/{file_id}/protected")
+def delete_media_protected(file_id: str, user: dict = Depends(require_operator)):
+    ok = media_hub.delete_file(file_id)
+    return {"ok": ok}
+
+
+# ══════════════════════════════════════
 #  WEBSOCKET
 # ══════════════════════════════════════
 
 @app.websocket("/ws/live")
 async def ws_live(websocket: WebSocket):
     await manager.connect(websocket)
+    ws_user = await authenticate_ws(websocket)
     try:
         await websocket.send_text(json.dumps({
             "type": "init",
@@ -706,6 +825,7 @@ async def ws_live(websocket: WebSocket):
             "subtitles": subtitles.get_state(),
             "media": media_engine.get_state(),
             "slideshow": media_hub.get_slideshow_state(),
+            "user": ws_user,
         }, ensure_ascii=False))
     except Exception:
         pass
