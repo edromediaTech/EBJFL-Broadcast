@@ -1058,24 +1058,58 @@ def api_chants_detail(section_id: int, numero: int):
     return JSONResponse(status_code=404, content={"error": "Chant introuvable"})
 
 
+import unicodedata
+
+def _normalize(text: str) -> str:
+    """Supprime les accents et met en minuscule pour la recherche."""
+    nfkd = unicodedata.normalize("NFKD", text.lower())
+    return "".join(ch for ch in nfkd if not unicodedata.combining(ch))
+
+
 @app.get("/api/chants/search")
-def api_chants_search(q: str = ""):
-    """Recherche dans les titres et paroles."""
+def api_chants_search(q: str = "", section_id: int = 0, limit: int = 50):
+    """Recherche par numéro, titre ou paroles (insensible aux accents)."""
     if not q:
         return []
-    q_lower = q.lower()
-    results = []
+    q_norm = _normalize(q.strip())
+    q_is_num = q.strip().lstrip("#").isdigit()
+    q_num = int(q.strip().lstrip("#")) if q_is_num else 0
+
     sections = {s[0]: s[1] for s in _load_chants().get("Sections", [])}
+    exact = []
+    title_match = []
+    first_line_match = []
+    paroles_match = []
+
     for c in _load_chants().get("Chants", []):
-        if q_lower in c[2].lower() or q_lower in c[3].lower():
-            results.append({
-                "sectionId": c[0],
-                "section": sections.get(c[0], ""),
-                "numero": c[1],
-                "titre": c[2],
-                "paroles": c[3],
-            })
-    return results
+        if section_id and c[0] != section_id:
+            continue
+
+        entry = {
+            "sectionId": c[0],
+            "section": sections.get(c[0], ""),
+            "numero": c[1],
+            "titre": c[2],
+            "paroles": c[3],
+            "firstLine": c[3].split("\n")[0].strip() if c[3] else "",
+        }
+
+        # 1. Exact number match
+        if q_is_num and c[1] == q_num:
+            exact.append(entry)
+        # 2. Title match
+        elif q_norm in _normalize(c[2]):
+            title_match.append(entry)
+        # 3. First line match
+        elif c[3] and q_norm in _normalize(c[3].split("\n")[0]):
+            first_line_match.append(entry)
+        # 4. Paroles match
+        elif q_norm in _normalize(c[3]):
+            paroles_match.append(entry)
+
+    # Tri: exact > titre > première ligne > paroles
+    results = exact + title_match + first_line_match + paroles_match
+    return results[:limit]
 
 
 @app.post("/api/chants/reload")
