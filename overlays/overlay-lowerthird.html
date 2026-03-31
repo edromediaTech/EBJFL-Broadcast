@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>EBJFL Overlay - Lower Third</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: transparent;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            width: 1920px;
+            height: 1080px;
+            position: relative;
+        }
+
+        #lower-third {
+            position: absolute; bottom: 80px; left: 60px;
+            opacity: 0; z-index: 10;
+            transition: all 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        /* Entrance animations */
+        #lower-third.anim-in-slide-left { transform: translateX(-120px); }
+        #lower-third.anim-in-slide-right { transform: translateX(120px); }
+        #lower-third.anim-in-slide-up { transform: translateY(60px); }
+        #lower-third.anim-in-fade { transform: none; }
+        #lower-third.anim-in-scale { transform: scale(0.7); }
+        #lower-third.anim-in-bounce { transform: translateY(80px); }
+        /* Visible = entrance done */
+        #lower-third.visible { opacity: 1; transform: translateX(0) translateY(0) scale(1); }
+        #lower-third.visible.anim-in-bounce { animation: ltBounce 0.6s ease; }
+        @keyframes ltBounce {
+            0% { transform: translateY(80px); opacity: 0; }
+            50% { transform: translateY(-10px); opacity: 1; }
+            75% { transform: translateY(5px); }
+            100% { transform: translateY(0); }
+        }
+        /* Exit animations */
+        #lower-third.exit-slide-left { opacity: 0; transform: translateX(-120px); }
+        #lower-third.exit-slide-right { opacity: 0; transform: translateX(120px); }
+        #lower-third.exit-slide-down { opacity: 0; transform: translateY(60px); }
+        #lower-third.exit-fade { opacity: 0; }
+        #lower-third.exit-scale { opacity: 0; transform: scale(0.7); }
+
+        /* ══════════════════════════════════════ */
+        /*  STYLE 1: Modern Accent (default)     */
+        /* ══════════════════════════════════════ */
+        .lt-style-modern .lt-box {
+            display: flex; align-items: stretch;
+        }
+        .lt-style-modern .lt-logo {
+            width: 70px; height: 70px; background: linear-gradient(135deg, #89b4fa, #cba6f7);
+            border-radius: 8px 0 0 8px; display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .lt-style-modern .lt-logo img { width: 50px; height: 50px; border-radius: 50%; }
+        .lt-style-modern .lt-accent-bar {
+            width: 5px; background: linear-gradient(180deg, #89b4fa, #cba6f7);
+        }
+        .lt-style-modern .lt-info {
+            background: rgba(30, 30, 46, 0.94); padding: 12px 28px;
+            border-radius: 0 8px 8px 0; backdrop-filter: blur(16px);
+            border: 1px solid rgba(137, 180, 250, 0.15); border-left: none;
+        }
+        .lt-style-modern .lt-name { font-size: 28px; font-weight: 700; color: #cdd6f4; }
+        .lt-style-modern .lt-title { font-size: 16px; color: #89b4fa; margin-top: 2px; }
+        .lt-style-modern .lt-subtitle { font-size: 13px; color: #a6adc8; }
+
+        /* ══════════════════════════════════════ */
+        /*  STYLE 2: Elegant Gold                */
+        /* ══════════════════════════════════════ */
+        .lt-style-elegant .lt-box { display: flex; align-items: center; gap: 16px; }
+        .lt-style-elegant .lt-logo {
+            width: 64px; height: 64px; border: 2px solid #d4a853;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            background: rgba(20, 15, 10, 0.8);
+        }
+        .lt-style-elegant .lt-logo img { width: 48px; height: 48px; border-radius: 50%; }
+        .lt-style-elegant .lt-info {
+            background: linear-gradient(90deg, rgba(20, 15, 10, 0.92), rgba(40, 30, 20, 0.85));
+            padding: 14px 32px; border-radius: 4px; border-bottom: 3px solid #d4a853;
+            backdrop-filter: blur(12px);
+        }
+        .lt-style-elegant .lt-name { font-size: 26px; font-weight: 600; color: #f5e6c8; letter-spacing: 1px; }
+        .lt-style-elegant .lt-title { font-size: 15px; color: #d4a853; margin-top: 3px; text-transform: uppercase; letter-spacing: 2px; font-weight: 500; }
+        .lt-style-elegant .lt-subtitle { font-size: 13px; color: #a89070; }
+
+        /* ══════════════════════════════════════ */
+        /*  STYLE 3: Clean Minimal               */
+        /* ══════════════════════════════════════ */
+        .lt-style-minimal .lt-box { display: flex; align-items: center; gap: 14px; }
+        .lt-style-minimal .lt-logo {
+            width: 56px; height: 56px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: #ffffff;
+        }
+        .lt-style-minimal .lt-logo img { width: 42px; height: 42px; border-radius: 50%; }
+        .lt-style-minimal .lt-info { padding: 10px 0; }
+        .lt-style-minimal .lt-name { font-size: 28px; font-weight: 700; color: #ffffff; text-shadow: 0 2px 12px rgba(0,0,0,0.8); }
+        .lt-style-minimal .lt-title { font-size: 15px; color: #89b4fa; text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+        .lt-style-minimal .lt-subtitle { font-size: 12px; color: #cdd6f4; text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+
+        /* ══════════════════════════════════════ */
+        /*  STYLE 4: Broadcast News              */
+        /* ══════════════════════════════════════ */
+        .lt-style-broadcast .lt-box { display: flex; align-items: stretch; }
+        .lt-style-broadcast .lt-logo {
+            width: 80px; background: #c0392b; display: flex; align-items: center; justify-content: center;
+        }
+        .lt-style-broadcast .lt-logo img { width: 54px; height: 54px; border-radius: 50%; }
+        .lt-style-broadcast .lt-name-bar {
+            background: #1a1a2e; padding: 10px 24px; display: flex; align-items: center;
+        }
+        .lt-style-broadcast .lt-name { font-size: 26px; font-weight: 700; color: #ffffff; }
+        .lt-style-broadcast .lt-title-bar {
+            background: #c0392b; padding: 6px 24px; display: flex; align-items: center;
+        }
+        .lt-style-broadcast .lt-title { font-size: 14px; font-weight: 600; color: #ffffff; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* ══════════════════════════════════════ */
+        /*  STYLE 5: Church Soft                 */
+        /* ══════════════════════════════════════ */
+        .lt-style-church .lt-box {
+            display: flex; align-items: center; gap: 16px;
+            background: rgba(255, 255, 255, 0.92); padding: 16px 28px;
+            border-radius: 12px; backdrop-filter: blur(16px);
+            box-shadow: 0 4px 30px rgba(0,0,0,0.15);
+        }
+        .lt-style-church .lt-logo {
+            width: 60px; height: 60px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .lt-style-church .lt-logo img { width: 54px; height: 54px; border-radius: 50%; }
+        .lt-style-church .lt-info { }
+        .lt-style-church .lt-name { font-size: 26px; font-weight: 700; color: #2c3e50; }
+        .lt-style-church .lt-title { font-size: 15px; color: #3498db; margin-top: 2px; }
+        .lt-style-church .lt-subtitle { font-size: 12px; color: #7f8c8d; }
+
+        /* ══════════════════════════════════════ */
+        /*  STYLE 6: Gradient Wave               */
+        /* ══════════════════════════════════════ */
+        .lt-style-gradient .lt-box {
+            display: flex; align-items: center; gap: 14px;
+            background: linear-gradient(135deg, rgba(137,180,250,0.9), rgba(203,166,247,0.9));
+            padding: 14px 28px; border-radius: 0 40px 40px 0;
+            backdrop-filter: blur(12px);
+        }
+        .lt-style-gradient .lt-logo {
+            width: 56px; height: 56px; border-radius: 50%; border: 3px solid #fff;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .lt-style-gradient .lt-logo img { width: 46px; height: 46px; border-radius: 50%; }
+        .lt-style-gradient .lt-name { font-size: 26px; font-weight: 700; color: #1e1e2e; }
+        .lt-style-gradient .lt-title { font-size: 14px; color: #313244; font-weight: 500; }
+        .lt-style-gradient .lt-subtitle { font-size: 12px; color: #45475a; }
+
+        /* ══════════════════════════════════════ */
+        /*  STYLE 7: Dark Cinema                 */
+        /* ══════════════════════════════════════ */
+        .lt-style-cinema .lt-box { text-align: center; }
+        .lt-style-cinema .lt-logo {
+            width: 72px; height: 72px; margin: 0 auto 10px; border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.3);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .lt-style-cinema .lt-logo img { width: 58px; height: 58px; border-radius: 50%; }
+        .lt-style-cinema .lt-name {
+            font-size: 30px; font-weight: 300; color: #ffffff; letter-spacing: 4px; text-transform: uppercase;
+            text-shadow: 0 2px 20px rgba(0,0,0,0.6);
+        }
+        .lt-style-cinema .lt-divider { width: 60px; height: 2px; background: #89b4fa; margin: 8px auto; }
+        .lt-style-cinema .lt-title {
+            font-size: 14px; color: #a6adc8; letter-spacing: 2px; text-transform: uppercase;
+            text-shadow: 0 1px 8px rgba(0,0,0,0.6);
+        }
+        .lt-style-cinema .lt-subtitle { font-size: 12px; color: #6c7086; margin-top: 4px; }
+
+        /* ══════════════════════════════════════ */
+        /*  STYLE 8: Ribbon Flag                 */
+        /* ══════════════════════════════════════ */
+        .lt-style-ribbon .lt-box { display: flex; align-items: stretch; position: relative; }
+        .lt-style-ribbon .lt-logo {
+            width: 74px; background: #2c3e50; display: flex; align-items: center; justify-content: center;
+            border-radius: 4px 0 0 4px; z-index: 1;
+        }
+        .lt-style-ribbon .lt-logo img { width: 50px; height: 50px; border-radius: 50%; }
+        .lt-style-ribbon .lt-info {
+            background: #34495e; padding: 12px 28px 12px 20px; position: relative;
+        }
+        .lt-style-ribbon .lt-info::after {
+            content: ''; position: absolute; right: -20px; top: 0; bottom: 0;
+            border-left: 20px solid #34495e; border-top: 32px solid transparent; border-bottom: 32px solid transparent;
+        }
+        .lt-style-ribbon .lt-name { font-size: 24px; font-weight: 700; color: #ecf0f1; }
+        .lt-style-ribbon .lt-title { font-size: 13px; color: #3498db; margin-top: 2px; text-transform: uppercase; }
+        .lt-style-ribbon .lt-subtitle { font-size: 11px; color: #95a5a6; }
+
+        /* ══ ANIMATIONS ══ */
+        @keyframes slideInLeft { from { transform: translateX(-100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes slideInUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeScale { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* Shimmer sweep horizontal */
+        #lower-third.anim-in-shimmer .lt-box { position: relative; overflow: hidden; }
+        #lower-third.anim-in-shimmer .lt-box::after {
+            content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+            animation: ltShimmer 1.2s ease 0.4s;
+        }
+        @keyframes ltShimmer {
+            0% { left: -50%; }
+            100% { left: 150%; }
+        }
+
+        /* Gradient reveal horizontal */
+        #lower-third.anim-in-reveal .lt-box {
+            -webkit-mask-image: linear-gradient(90deg, #000 0%, transparent 0%);
+            mask-image: linear-gradient(90deg, #000 0%, transparent 0%);
+            animation: ltReveal 0.8s ease forwards;
+        }
+        @keyframes ltReveal {
+            0% { -webkit-mask-image: linear-gradient(90deg, #000 0%, transparent 0%); mask-image: linear-gradient(90deg, #000 0%, transparent 0%); }
+            100% { -webkit-mask-image: linear-gradient(90deg, #000 100%, transparent 100%); mask-image: linear-gradient(90deg, #000 100%, transparent 100%); }
+        }
+
+        /* Color sweep */
+        #lower-third.anim-in-sweep .lt-box { position: relative; overflow: hidden; }
+        #lower-third.anim-in-sweep .lt-box::before {
+            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(137,180,250,0.3), rgba(203,166,247,0.3), transparent);
+            animation: ltSweep 1s ease 0.3s;
+            z-index: 10; pointer-events: none;
+        }
+        @keyframes ltSweep {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="lower-third" class="lt-style-modern">
+        <div class="lt-box" id="lt-box"></div>
+    </div>
+
+    <script>
+        const WS_URL = `ws://${location.hostname}:${location.port || 8000}/ws/live`;
+        let ws, hideTimeout;
+        let currentStyle = 'modern';
+        let animIn = 'slide-left', animOut = 'slide-left';
+
+        const STYLES = {
+            modern: (name, title, subtitle, social) => `
+                <div class="lt-logo"><img src="/assets/logo.png"></div>
+                <div class="lt-accent-bar"></div>
+                <div class="lt-info">
+                    <div class="lt-name">${name}</div>
+                    ${title ? `<div class="lt-title">${title}</div>` : ''}
+                    ${subtitle ? `<div class="lt-subtitle">${subtitle}</div>` : ''}
+                </div>`,
+
+            elegant: (name, title, subtitle) => `
+                <div class="lt-logo"><img src="/assets/logo.png"></div>
+                <div class="lt-info">
+                    <div class="lt-name">${name}</div>
+                    ${title ? `<div class="lt-title">${title}</div>` : ''}
+                    ${subtitle ? `<div class="lt-subtitle">${subtitle}</div>` : ''}
+                </div>`,
+
+            minimal: (name, title, subtitle) => `
+                <div class="lt-logo"><img src="/assets/logo.png"></div>
+                <div class="lt-info">
+                    <div class="lt-name">${name}</div>
+                    ${title ? `<div class="lt-title">${title}</div>` : ''}
+                    ${subtitle ? `<div class="lt-subtitle">${subtitle}</div>` : ''}
+                </div>`,
+
+            broadcast: (name, title) => `
+                <div class="lt-logo"><img src="/assets/logo.png"></div>
+                <div style="display:flex;flex-direction:column;">
+                    <div class="lt-name-bar"><div class="lt-name">${name}</div></div>
+                    ${title ? `<div class="lt-title-bar"><div class="lt-title">${title}</div></div>` : ''}
+                </div>`,
+
+            church: (name, title, subtitle) => `
+                <div class="lt-logo"><img src="/assets/logo.png"></div>
+                <div class="lt-info">
+                    <div class="lt-name">${name}</div>
+                    ${title ? `<div class="lt-title">${title}</div>` : ''}
+                    ${subtitle ? `<div class="lt-subtitle">${subtitle}</div>` : ''}
+                </div>`,
+
+            gradient: (name, title, subtitle) => `
+                <div class="lt-logo"><img src="/assets/logo.png"></div>
+                <div class="lt-info">
+                    <div class="lt-name">${name}</div>
+                    ${title ? `<div class="lt-title">${title}</div>` : ''}
+                    ${subtitle ? `<div class="lt-subtitle">${subtitle}</div>` : ''}
+                </div>`,
+
+            cinema: (name, title, subtitle) => `
+                <div class="lt-logo"><img src="/assets/logo.png"></div>
+                <div class="lt-name">${name}</div>
+                <div class="lt-divider"></div>
+                ${title ? `<div class="lt-title">${title}</div>` : ''}
+                ${subtitle ? `<div class="lt-subtitle">${subtitle}</div>` : ''}`,
+
+            ribbon: (name, title, subtitle) => `
+                <div class="lt-logo"><img src="/assets/logo.png"></div>
+                <div class="lt-info">
+                    <div class="lt-name">${name}</div>
+                    ${title ? `<div class="lt-title">${title}</div>` : ''}
+                    ${subtitle ? `<div class="lt-subtitle">${subtitle}</div>` : ''}
+                </div>`,
+        };
+
+        function connectWS() {
+            ws = new WebSocket(WS_URL);
+            ws.onopen = () => console.log("[EBJFL] Lower Third overlay connecte");
+            ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
+            ws.onclose = () => setTimeout(connectWS, 2000);
+        }
+
+        function handleMessage(msg) {
+            switch (msg.type) {
+                case "init":
+                    if (msg.projection && msg.projection.projection_type === "lower_third") {
+                        showLowerThird(msg.projection);
+                    }
+                    break;
+                case "projection":
+                    if (msg.projection_type === "lower_third") showLowerThird(msg);
+                    else document.getElementById("lower-third").classList.remove("visible");
+                    break;
+                case "lt_style":
+                    if (msg.style && STYLES[msg.style]) currentStyle = msg.style;
+                    if (msg.animIn) animIn = msg.animIn;
+                    if (msg.animOut) animOut = msg.animOut;
+                    break;
+            }
+        }
+
+        function showLowerThird(state) {
+            const el = document.getElementById("lower-third");
+
+            if (!state.active || state.projection_type === "blank") {
+                // Exit animation
+                el.classList.remove("visible");
+                el.classList.add(`exit-${animOut}`);
+                setTimeout(() => el.classList.remove(`exit-${animOut}`), 700);
+                return;
+            }
+
+            const name = state.title || "";
+            const title = state.main_text || "";
+            const subtitle = state.sub_text || "";
+            const social = state.footer || "";
+
+            const style = state.lt_style || currentStyle;
+
+            // Reset classes
+            el.className = `lt-style-${style} anim-in-${animIn}`;
+
+            const box = document.getElementById("lt-box");
+            const renderer = STYLES[style] || STYLES.modern;
+            box.innerHTML = renderer(name, title, subtitle, social);
+
+            // Position: cinema is centered
+            if (style === 'cinema') {
+                el.style.left = '50%'; el.style.bottom = '100px';
+            } else {
+                el.style.left = '60px'; el.style.bottom = '80px';
+            }
+
+            // Trigger entrance
+            requestAnimationFrame(() => {
+                el.classList.add("visible");
+            });
+
+            clearTimeout(hideTimeout);
+            hideTimeout = setTimeout(() => {
+                el.classList.remove("visible");
+                el.classList.add(`exit-${animOut}`);
+                setTimeout(() => el.classList.remove(`exit-${animOut}`), 700);
+            }, 10000);
+        }
+
+        connectWS();
+    </script>
+</body>
+</html>

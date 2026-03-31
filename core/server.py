@@ -14,6 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+from pathlib import Path
+
 from core.obs_bridge import obs_bridge
 from core.config import config
 from core.auth import (
@@ -361,6 +363,25 @@ def create_service(data: ServiceCreate):
     return {"id": sid}
 
 
+class ServiceUpdate(BaseModel):
+    title: str = ""
+    date: str = ""
+    theme: str = ""
+    notes: str = ""
+
+@app.put("/services/{service_id}")
+def update_service(service_id: int, data: ServiceUpdate):
+    fields = {k: v for k, v in data.model_dump().items() if v}
+    ok = crud.service_update(service_id, **fields)
+    return {"ok": ok}
+
+
+@app.delete("/services/{service_id}")
+def delete_service(service_id: int):
+    crud.service_delete(service_id)
+    return {"ok": True}
+
+
 class ServiceItemAdd(BaseModel):
     item_type: str
     reference_id: int = 0
@@ -377,6 +398,32 @@ def add_service_item(service_id: int, data: ServiceItemAdd):
 @app.post("/services/items/{item_id}/status")
 def update_item_status(item_id: int, status: str = "done"):
     crud.service_update_item_status(item_id, status)
+    return {"ok": True}
+
+
+class ReorderItems(BaseModel):
+    item_ids: list[int]
+
+@app.post("/services/{service_id}/reorder")
+def reorder_service_items(service_id: int, data: ReorderItems):
+    crud.service_reorder_items(service_id, data.item_ids)
+    return {"ok": True}
+
+
+class ServiceItemUpdate(BaseModel):
+    custom_title: str = ""
+    custom_text: str = ""
+
+@app.put("/services/items/{item_id}")
+def update_service_item(item_id: int, data: ServiceItemUpdate):
+    fields = {k: v for k, v in data.model_dump().items() if v}
+    crud.service_update_item(item_id, **fields)
+    return {"ok": True}
+
+
+@app.delete("/services/items/{item_id}")
+def delete_service_item(item_id: int):
+    crud.service_delete_item(item_id)
     return {"ok": True}
 
 
@@ -808,6 +855,341 @@ def delete_text_protected(text_id: int, user: dict = Depends(require_operator)):
 def delete_media_protected(file_id: str, user: dict = Depends(require_operator)):
     ok = media_hub.delete_file(file_id)
     return {"ok": ok}
+
+
+# ══════════════════════════════════════
+#  BIBLE LSG (JSON offline-first)
+# ══════════════════════════════════════
+
+_bible_cache: dict[str, list[dict]] = {}   # version -> books
+_chants_data: dict | None = None
+_range = range  # sauvegarde du builtin pour éviter conflit avec le paramètre 'range'
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+_BIBLE_FILES = {
+    "lsg": "bible-lsg.json",
+    "fr":  "bible-fr.json",
+}
+
+
+def _bible_filename(version: str) -> str:
+    return _BIBLE_FILES.get(version.lower(), f"bible-{version.lower()}.json")
+
+
+def _load_bible(version: str = "lsg") -> list[dict]:
+    key = version.lower()
+    if key in _bible_cache:
+        return _bible_cache[key]
+    fp = DATA_DIR / _bible_filename(key)
+    if not fp.exists():
+        _bible_cache[key] = []
+        return _bible_cache[key]
+    with open(fp, encoding="utf-8") as f:
+        _bible_cache[key] = json.load(f)
+    return _bible_cache[key]
+
+
+def _load_chants():
+    global _chants_data
+    if _chants_data is not None:
+        return _chants_data
+    fp = DATA_DIR / "chants-desperance.json"
+    if not fp.exists():
+        _chants_data = {"Sections": [], "Chants": []}
+        return _chants_data
+    with open(fp, encoding="utf-8") as f:
+        _chants_data = json.load(f)
+    return _chants_data
+
+
+def _serve_json_file(filepath: Path):
+    """Sert un fichier JSON local en téléchargement."""
+    if not filepath.exists():
+        return JSONResponse(status_code=404, content={"error": f"Fichier {filepath.name} introuvable"})
+    return FileResponse(filepath, media_type="application/json",
+                        filename=filepath.name)
+
+
+def _bible_find_book(abbrev: str, version: str = "lsg"):
+    for book in _load_bible(version):
+        if book["abbrev"] == abbrev:
+            return book
+    return None
+
+
+@app.get("/api/bible/download")
+def api_bible_download(version: str = "lsg"):
+    """Sert le fichier Bible JSON pour téléchargement client (offline cache)."""
+    return _serve_json_file(DATA_DIR / _bible_filename(version))
+
+
+@app.get("/api/bible/books")
+def api_bible_books(version: str = "lsg"):
+    """Liste des livres avec nombre de chapitres."""
+    return [
+        {"abbrev": b["abbrev"], "name": b["name"], "chapters": len(b["chapters"])}
+        for b in _load_bible(version)
+    ]
+
+
+@app.get("/api/bible/chapter/{abbrev}/{chapter}")
+def api_bible_chapter(abbrev: str, chapter: int, version: str = "lsg"):
+    """Tous les versets d'un chapitre."""
+    book = _bible_find_book(abbrev, version)
+    if not book:
+        return JSONResponse(status_code=404, content={"error": "Livre introuvable"})
+    if chapter < 1 or chapter > len(book["chapters"]):
+        return JSONResponse(status_code=404, content={"error": "Chapitre introuvable"})
+    verses = book["chapters"][chapter - 1]
+    return {
+        "book": book["name"],
+        "abbrev": book["abbrev"],
+        "chapter": chapter,
+        "totalVerses": len(verses),
+        "verses": [{"verse": i + 1, "text": v} for i, v in enumerate(verses)],
+    }
+
+
+@app.get("/api/bible/verse/{abbrev}/{chapter}/{verse}")
+def api_bible_verse(abbrev: str, chapter: int, verse: int, version: str = "lsg"):
+    """Un seul verset."""
+    book = _bible_find_book(abbrev, version)
+    if not book:
+        return JSONResponse(status_code=404, content={"error": "Livre introuvable"})
+    if chapter < 1 or chapter > len(book["chapters"]):
+        return JSONResponse(status_code=404, content={"error": "Chapitre introuvable"})
+    ch = book["chapters"][chapter - 1]
+    if verse < 1 or verse > len(ch):
+        return JSONResponse(status_code=404, content={"error": "Verset introuvable"})
+    return {
+        "book": book["name"],
+        "abbrev": book["abbrev"],
+        "chapter": chapter,
+        "verse": verse,
+        "text": ch[verse - 1],
+    }
+
+
+@app.get("/api/bible/passage/{abbrev}/{chapter}/{range}")
+def api_bible_passage_range(abbrev: str, chapter: int, range: str, version: str = "lsg"):
+    """Passage (ex: jn/3/16-18)."""
+    book = _bible_find_book(abbrev, version)
+    if not book:
+        return JSONResponse(status_code=404, content={"error": "Livre introuvable"})
+    if chapter < 1 or chapter > len(book["chapters"]):
+        return JSONResponse(status_code=404, content={"error": "Chapitre introuvable"})
+    ch = book["chapters"][chapter - 1]
+    parts = range.split("-")
+    start = int(parts[0])
+    end = int(parts[1]) if len(parts) > 1 else start
+    start = max(1, start)
+    end = min(len(ch), end)
+    return {
+        "book": book["name"],
+        "chapter": chapter,
+        "verses": [{"verse": i, "text": ch[i - 1]} for i in _range(start, end + 1)],
+    }
+
+
+@app.post("/api/bible/reload")
+def api_bible_reload(version: str = "lsg"):
+    """Recharge le fichier Bible depuis le disque."""
+    _bible_cache.pop(version.lower(), None)
+    books = _load_bible(version)
+    return {"ok": True, "version": version, "books": len(books)}
+
+
+# ══════════════════════════════════════
+#  CHANTS D'ESPÉRANCE (JSON offline-first)
+# ══════════════════════════════════════
+
+def _chants_section_by_id(sid: int):
+    for s in _load_chants().get("Sections", []):
+        if s[0] == sid:
+            return s
+    return None
+
+
+@app.get("/api/chants/download")
+def api_chants_download():
+    """Sert le fichier Chants d'Espérance JSON pour téléchargement client (offline cache)."""
+    return _serve_json_file(DATA_DIR / "chants-desperance.json")
+
+
+@app.get("/api/chants/sections")
+def api_chants_sections():
+    """Liste des sections."""
+    return [
+        {"id": s[0], "nom": s[1], "total": s[2]}
+        for s in _load_chants().get("Sections", [])
+    ]
+
+
+@app.get("/api/chants/list/{section_id}")
+def api_chants_list(section_id: int):
+    """Liste des chants d'une section."""
+    sec = _chants_section_by_id(section_id)
+    if not sec:
+        return JSONResponse(status_code=404, content={"error": "Section introuvable"})
+    chants = [
+        {"numero": c[1], "titre": c[2]}
+        for c in _load_chants().get("Chants", [])
+        if c[0] == section_id
+    ]
+    return {"section": sec[1], "total": sec[2], "chants": chants}
+
+
+@app.get("/api/chants/{section_id}/{numero}")
+def api_chants_detail(section_id: int, numero: int):
+    """Détail d'un chant avec paroles."""
+    sec = _chants_section_by_id(section_id)
+    if not sec:
+        return JSONResponse(status_code=404, content={"error": "Section introuvable"})
+    for c in _load_chants().get("Chants", []):
+        if c[0] == section_id and c[1] == numero:
+            return {
+                "sectionId": section_id,
+                "section": sec[1],
+                "numero": c[1],
+                "titre": c[2],
+                "paroles": c[3],
+            }
+    return JSONResponse(status_code=404, content={"error": "Chant introuvable"})
+
+
+@app.get("/api/chants/search")
+def api_chants_search(q: str = ""):
+    """Recherche dans les titres et paroles."""
+    if not q:
+        return []
+    q_lower = q.lower()
+    results = []
+    sections = {s[0]: s[1] for s in _load_chants().get("Sections", [])}
+    for c in _load_chants().get("Chants", []):
+        if q_lower in c[2].lower() or q_lower in c[3].lower():
+            results.append({
+                "sectionId": c[0],
+                "section": sections.get(c[0], ""),
+                "numero": c[1],
+                "titre": c[2],
+                "paroles": c[3],
+            })
+    return results
+
+
+@app.post("/api/chants/reload")
+def api_chants_reload():
+    """Recharge le fichier chants-desperance.json (sync manuelle)."""
+    global _chants_data
+    _chants_data = None
+    _load_chants()
+    return {"ok": True, "sections": len(_chants_data.get("Sections", [])),
+            "chants": len(_chants_data.get("Chants", []))}
+
+
+def _save_chants():
+    """Sauvegarde les chants en JSON."""
+    fp = DATA_DIR / "chants-desperance.json"
+    with open(fp, "w", encoding="utf-8") as f:
+        json.dump(_chants_data, f, ensure_ascii=False)
+
+
+# ── CRUD Sections ──
+
+class SectionCreate(BaseModel):
+    nom: str
+
+@app.post("/api/chants/sections")
+def api_chants_section_create(data: SectionCreate):
+    """Créer une nouvelle section/recueil."""
+    d = _load_chants()
+    new_id = max((s[0] for s in d["Sections"]), default=0) + 1
+    d["Sections"].append([new_id, data.nom, 0])
+    _save_chants()
+    return {"ok": True, "id": new_id}
+
+
+class SectionUpdate(BaseModel):
+    nom: str
+
+@app.put("/api/chants/sections/{section_id}")
+def api_chants_section_update(section_id: int, data: SectionUpdate):
+    """Renommer une section."""
+    d = _load_chants()
+    for s in d["Sections"]:
+        if s[0] == section_id:
+            s[1] = data.nom
+            _save_chants()
+            return {"ok": True}
+    return JSONResponse(status_code=404, content={"error": "Section introuvable"})
+
+
+@app.delete("/api/chants/sections/{section_id}")
+def api_chants_section_delete(section_id: int):
+    """Supprimer une section et tous ses chants."""
+    d = _load_chants()
+    d["Sections"] = [s for s in d["Sections"] if s[0] != section_id]
+    d["Chants"] = [c for c in d["Chants"] if c[0] != section_id]
+    _save_chants()
+    return {"ok": True}
+
+
+# ── CRUD Chants ──
+
+class ChantCreate(BaseModel):
+    section_id: int
+    numero: int = 0
+    titre: str
+    paroles: str = ""
+
+@app.post("/api/chants")
+def api_chants_create(data: ChantCreate):
+    """Créer un nouveau chant."""
+    d = _load_chants()
+    # Auto-numero si 0
+    numero = data.numero
+    if numero == 0:
+        existing = [c[1] for c in d["Chants"] if c[0] == data.section_id]
+        numero = max(existing, default=0) + 1
+    d["Chants"].append([data.section_id, numero, data.titre, data.paroles])
+    # Update section total
+    for s in d["Sections"]:
+        if s[0] == data.section_id:
+            s[2] = len([c for c in d["Chants"] if c[0] == data.section_id])
+    _save_chants()
+    return {"ok": True, "numero": numero}
+
+
+class ChantUpdate(BaseModel):
+    titre: str = ""
+    paroles: str = ""
+
+@app.put("/api/chants/{section_id}/{numero}")
+def api_chants_update(section_id: int, numero: int, data: ChantUpdate):
+    """Modifier un chant."""
+    d = _load_chants()
+    for c in d["Chants"]:
+        if c[0] == section_id and c[1] == numero:
+            if data.titre:
+                c[2] = data.titre
+            if data.paroles:
+                c[3] = data.paroles
+            _save_chants()
+            return {"ok": True}
+    return JSONResponse(status_code=404, content={"error": "Chant introuvable"})
+
+
+@app.delete("/api/chants/{section_id}/{numero}")
+def api_chants_delete(section_id: int, numero: int):
+    """Supprimer un chant."""
+    d = _load_chants()
+    d["Chants"] = [c for c in d["Chants"] if not (c[0] == section_id and c[1] == numero)]
+    for s in d["Sections"]:
+        if s[0] == section_id:
+            s[2] = len([c for c in d["Chants"] if c[0] == section_id])
+    _save_chants()
+    return {"ok": True}
 
 
 # ══════════════════════════════════════

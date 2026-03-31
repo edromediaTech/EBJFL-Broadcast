@@ -214,6 +214,29 @@ def service_create(title: str, date: str, theme: str = "", notes: str = "") -> i
     return sid
 
 
+def service_update(service_id: int, **fields) -> bool:
+    if not fields:
+        return False
+    allowed = {"title", "date", "theme", "notes"}
+    sets = [(k, v) for k, v in fields.items() if k in allowed and v is not None]
+    if not sets:
+        return False
+    conn = get_db()
+    sql = "UPDATE services SET " + ", ".join(f"{k} = ?" for k, _ in sets) + " WHERE id = ?"
+    conn.execute(sql, [v for _, v in sets] + [service_id])
+    conn.commit()
+    conn.close()
+    return True
+
+
+def service_delete(service_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM service_items WHERE service_id = ?", (service_id,))
+    conn.execute("DELETE FROM services WHERE id = ?", (service_id,))
+    conn.commit()
+    conn.close()
+
+
 def service_get(service_id: int) -> dict | None:
     conn = get_db()
     svc = _dict(conn.execute("SELECT * FROM services WHERE id = ?", (service_id,)).fetchone())
@@ -248,9 +271,28 @@ def service_add_item(service_id: int, item_type: str, reference_id: int = 0,
     return item_id
 
 
+def service_update_item(item_id: int, **fields):
+    allowed = {"custom_title", "custom_text", "item_type"}
+    sets = [(k, v) for k, v in fields.items() if k in allowed and v is not None]
+    if not sets:
+        return
+    conn = get_db()
+    sql = "UPDATE service_items SET " + ", ".join(f"{k} = ?" for k, _ in sets) + " WHERE id = ?"
+    conn.execute(sql, [v for _, v in sets] + [item_id])
+    conn.commit()
+    conn.close()
+
+
 def service_update_item_status(item_id: int, status: str):
     conn = get_db()
     conn.execute("UPDATE service_items SET status = ? WHERE id = ?", (status, item_id))
+    conn.commit()
+    conn.close()
+
+
+def service_delete_item(item_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM service_items WHERE id = ?", (item_id,))
     conn.commit()
     conn.close()
 

@@ -36,8 +36,16 @@
 
         #projection .bg-overlay {
             position: absolute; inset: 0;
-            background: rgba(10, 10, 20, var(--overlay-opacity, 0.85));
+            background: var(--proj-bg, rgba(10, 10, 20, 0.85));
             z-index: 0;
+        }
+        #projection .bg-overlay img {
+            width: 100%; height: 100%; object-fit: cover;
+            position: absolute; inset: 0;
+        }
+        #projection .bg-overlay .bg-dim {
+            position: absolute; inset: 0;
+            background: rgba(0,0,0, var(--proj-bg-dim, 0.4));
         }
         #projection .content {
             position: relative; z-index: 1; max-width: 1600px;
@@ -48,8 +56,9 @@
             margin-bottom: 12px; letter-spacing: 1px; text-transform: uppercase;
         }
         #proj-main {
-            font-size: 54px; font-weight: 700; color: #ffffff;
-            line-height: 1.35; text-shadow: 0 2px 20px rgba(0,0,0,0.7);
+            font-size: var(--proj-font-size, 54px); font-weight: 700;
+            color: var(--proj-text-color, #ffffff);
+            line-height: 1.35; text-shadow: var(--proj-text-shadow, 0 2px 20px rgba(0,0,0,0.7));
             white-space: pre-line;
         }
         #proj-sub {
@@ -189,6 +198,37 @@
             pointer-events: none;
         }
 
+        /* ══ TELEPROMPTER (scroll vertical) ══ */
+        #teleprompter {
+            position: absolute; inset: 0; z-index: 3;
+            display: none; overflow: hidden;
+        }
+        #teleprompter.visible { display: block; }
+        #teleprompter .tp-bg {
+            position: absolute; inset: 0;
+            background: rgba(10, 10, 20, 0.90);
+        }
+        #teleprompter .tp-ref {
+            position: absolute; top: 20px; left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px; color: #89b4fa; font-weight: 600;
+            z-index: 2; text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        }
+        #teleprompter .tp-scroll {
+            position: absolute; left: 0; right: 0;
+            padding: 80px 140px 600px;
+            will-change: transform;
+        }
+        #teleprompter .tp-verse {
+            font-size: 48px; font-weight: 600; color: #ffffff;
+            line-height: 1.6; margin-bottom: 28px;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.6);
+        }
+        #teleprompter .tp-verse .tp-vnum {
+            color: #89b4fa; font-size: 28px; vertical-align: super;
+            margin-right: 6px; font-weight: 700;
+        }
+
         /* ══ ANIMATIONS ══ */
         .anim-fade { animation: fadeIn 0.6s ease; }
         .anim-slide-up { animation: slideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
@@ -217,6 +257,13 @@
             <div id="proj-footer"></div>
         </div>
         <div id="proj-indicator"></div>
+    </div>
+
+    <!-- Teleprompter (scroll vertical) -->
+    <div id="teleprompter">
+        <div class="tp-bg"></div>
+        <div class="tp-ref" id="tp-ref"></div>
+        <div class="tp-scroll" id="tp-scroll"></div>
     </div>
 
     <!-- Lower Third -->
@@ -290,7 +337,51 @@
                 case "clock": applyClock(msg); break;
                 case "media": applyMedia(msg); break;
                 case "slideshow": applySlideshow(msg); break;
+                case "teleprompter": applyTeleprompter(msg); break;
+                case "fontsize": applyFontSize(msg); break;
+                case "projstyle": applyProjStyle(msg); break;
+                case "media_transform": applyMediaTransform(msg); break;
             }
+        }
+
+        function applyFontSize(msg) {
+            if (msg.size) document.documentElement.style.setProperty('--proj-font-size', msg.size + 'px');
+        }
+
+        function applyProjStyle(msg) {
+            const root = document.documentElement.style;
+            const overlay = document.querySelector('#projection .bg-overlay');
+
+            if (msg.bgType === 'color') {
+                overlay.innerHTML = '';
+                root.setProperty('--proj-bg', msg.bgColor || 'rgba(10,10,20,0.85)');
+            } else if (msg.bgType === 'gradient') {
+                overlay.innerHTML = '';
+                root.setProperty('--proj-bg', `linear-gradient(${msg.gradientAngle || 180}deg, ${msg.gradientFrom || '#0a0a14'}, ${msg.gradientTo || '#1a1a2e'})`);
+            } else if (msg.bgType === 'image') {
+                overlay.innerHTML = `<img src="${msg.bgImage}"><div class="bg-dim"></div>`;
+                root.setProperty('--proj-bg', 'transparent');
+                root.setProperty('--proj-bg-dim', msg.bgDim || '0.4');
+            }
+
+            // Auto text color based on background luminance
+            if (msg.textColor) {
+                root.setProperty('--proj-text-color', msg.textColor);
+                const isDark = isColorDark(msg.textColor);
+                root.setProperty('--proj-text-shadow', isDark ? 'none' : '0 2px 20px rgba(0,0,0,0.7)');
+            } else if (msg.bgColor && msg.bgType === 'color') {
+                // Auto-detect: light bg → dark text, dark bg → light text
+                const isDark = isColorDark(msg.bgColor);
+                root.setProperty('--proj-text-color', isDark ? '#ffffff' : '#1e1e2e');
+                root.setProperty('--proj-text-shadow', isDark ? '0 2px 20px rgba(0,0,0,0.7)' : '0 2px 10px rgba(255,255,255,0.3)');
+            }
+        }
+
+        function isColorDark(hex) {
+            hex = hex.replace('#', '');
+            if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+            const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
+            return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
         }
 
         // ── Slideshow ──
@@ -514,6 +605,85 @@
                 el.innerHTML = `<iframe src="${state.url}" style="width:100%;height:100%;border:none;"></iframe>`;
             }
             el.classList.add("visible");
+        }
+
+        // ── Media zoom & pan ──
+        function applyMediaTransform(msg) {
+            const el = document.getElementById("media-layer");
+            const z = msg.zoom || 1, px = msg.panX || 0, py = msg.panY || 0;
+            if (z <= 1 && px === 0 && py === 0) {
+                el.style.transform = '';
+                el.style.transformOrigin = '';
+            } else {
+                el.style.transform = `scale(${z}) translate(${-px}px, ${-py}px)`;
+                el.style.transformOrigin = 'center center';
+            }
+        }
+
+        // ── Teleprompter ──
+        let tpAnimFrame = null, tpSpeed = 1, tpY = 0, tpRunning = false;
+
+        function applyTeleprompter(state) {
+            const el = document.getElementById("teleprompter");
+
+            if (state.active === false) {
+                el.classList.remove("visible");
+                tpRunning = false;
+                if (tpAnimFrame) cancelAnimationFrame(tpAnimFrame);
+                return;
+            }
+
+            // Speed update only (no verses = just speed change)
+            if (state.speed !== undefined && !state.verses) {
+                tpSpeed = state.speed;
+                if (!tpRunning && el.classList.contains("visible")) {
+                    tpRunning = true;
+                    tpAnimate();
+                }
+                return;
+            }
+
+            // Pause/resume
+            if (state.paused !== undefined) {
+                tpRunning = !state.paused;
+                if (tpRunning) tpAnimate();
+                return;
+            }
+
+            // Full load
+            document.getElementById("tp-ref").textContent = state.reference || "";
+            const scroll = document.getElementById("tp-scroll");
+            scroll.innerHTML = "";
+            (state.verses || []).forEach(v => {
+                const div = document.createElement("div");
+                div.className = "tp-verse";
+                div.innerHTML = `<span class="tp-vnum">${v.verse || ""}</span>${v.text || ""}`;
+                scroll.appendChild(div);
+            });
+
+            tpSpeed = state.speed || 1;
+            tpY = 0;
+            scroll.style.transform = "translateY(1080px)"; // start below screen
+            el.classList.add("visible");
+            document.getElementById("projection").classList.remove("visible");
+
+            tpRunning = true;
+            tpAnimate();
+        }
+
+        function tpAnimate() {
+            if (!tpRunning) return;
+            const scroll = document.getElementById("tp-scroll");
+            const maxScroll = scroll.scrollHeight + 1080;
+            tpY += tpSpeed * 0.8;
+            scroll.style.transform = `translateY(${1080 - tpY}px)`;
+
+            if (tpY < maxScroll) {
+                tpAnimFrame = requestAnimationFrame(tpAnimate);
+            } else {
+                tpRunning = false;
+                // Signal end
+            }
         }
 
         connectWS();
